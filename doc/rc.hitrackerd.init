@@ -1,0 +1,51 @@
+#!/bin/sh
+#
+# HITRACKERD:
+#
+# chkconfig:	2345 70 40
+# description:  HITRACKERD
+#
+#
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+#[ -r /etc/sysconfig/hitrackerd ] && . /etc/sysconfig/hitrackerd
+HITRACKERDARGS=" -d -c /usr/local/etc/hitrackerd.ini > /dev/null 2>&1 "
+
+start() 
+{
+    echo -n $"Starting hitrackerd: "
+    daemon /usr/local/sbin/hitrackerd $HITRACKERDARGS
+
+    echo
+}
+
+stop() 
+{
+    echo -n $"Shutting down hitrackerd: "
+    killproc hitrackerd
+
+    echo
+}
+
+[ -f /usr/local/sbin/hitrackerd ] || exit 0
+
+# See how we were called.
+case "$1" in
+    start)
+    start
+    ;;
+    stop)
+    stop
+    ;;
+    restart|reload)
+    stop
+    start
+    ;;
+    *)
+    echo $"Usage: $0 {start|stop|restart|reload}"
+    exit 1
+esac
+
+exit 0
