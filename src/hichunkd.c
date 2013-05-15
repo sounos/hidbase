@@ -976,7 +976,7 @@ int chunkd_add_mask(int diskid, int mask)
         dbmasks[k].diskid = diskid;
         dbmasks[k].mask = mask;
         sprintf(dbmasks[k].ip, "%d.%d.%d.%d", ch[0], ch[1], ch[2], ch[3]);
-        multicastd->add_multicast(multicastd, dbmasks[k].ip);
+        multicastd->new_multicast(multicastd, dbmasks[k].ip);
         return 0;
     }
     return -1;
@@ -1247,7 +1247,7 @@ int sbase_initialize(SBASE *sbase, char *conf)
     multicastd->nworking_tosleep = iniparser_getint(dict, "MULTICASTD:nworking_tosleep", SB_NWORKING_TOSLEEP);
     multicastd->set_log(multicastd, iniparser_getstr(dict, "MULTICASTD:logfile"));
     multicastd->set_log_level(multicastd, iniparser_getint(dict, "MULTICASTD:log_level", 0));
-    multicastd->session.flags = SB_MULTICAST|SB_NONBLOCK;
+    multicastd->session.flags = SB_MULTICAST|SB_NONBLOCK|SB_MULTICAST_LIST;
     multicastd->session.packet_type = PACKET_CERTAIN_LENGTH;
     multicastd->session.packet_length = sizeof(DBHEAD);
     multicastd->session.buffer_size = iniparser_getint(dict, "MULTICASTD:buffer_size", SB_BUF_SIZE);
