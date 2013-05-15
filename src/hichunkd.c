@@ -48,7 +48,7 @@ static unsigned char *httpd_index_html_code = NULL;
 static int  nhttpd_index_html_code = 0;
 static SBASE *sbase = NULL;
 static SERVICE *httpd = NULL;
-static SERVICE *traced = NULL;
+//static SERVICE *traced = NULL;
 static SERVICE *multicastd = NULL;
 static dictionary *dict = NULL;
 static void *http_headers_map = NULL;
@@ -259,7 +259,6 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
         port = 0, mode = -1, x = 0, mask = 0;
     HTTP_REQ httpRQ = {0}, *http_req = NULL;
     int64_t kid = 0, tab[XDB_KEYS_MAX];
-    unsigned char digest[MD5_LEN];
     CB_DATA *block = NULL;
     BREC record = {0};
     off_t limit = -1;
@@ -381,9 +380,8 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                 {
                     if(url) 
                     {
-                        base64_decode((unsigned char *)uri, (const char *)url, strlen(url));
-                        md5((unsigned char *)uri, strlen(uri), digest);
-                        kid = *((int64_t *)digest);
+                        n = base64_decode((unsigned char *)uri, (const char *)url, strlen(url));
+                        kid = dbase_kid(uri, n);
                     }
                     if(key) kid = atoll(key);
                     if((p = keys))

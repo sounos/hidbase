@@ -52,7 +52,7 @@ static SERVICE *httpd = NULL;
 static SERVICE *trackerd = NULL;
 static SERVICE *traced = NULL;
 static MGROUP multicasts[DBASE_MASK];
-static char *multicast_network = "235.8.8";
+static char *multicast_network = "234.8.8";
 static int  multicast_port = 2345;
 static int  multicast_limit = 64;
 static SERVICE *multicastd = NULL;
@@ -64,7 +64,7 @@ static int query_wait_time = 100000;
 static char *dbprefix = "/mdb/";
 static int ndbprefix = 5;
 static int group_conns_limit = 32;
-static int chunk_io_timeout = 60000000;
+//static int chunk_io_timeout = 60000000;
 static char *public_multicast = "233.8.8.8";
 static int public_multicast_limit = 24;
 static int public_groupid = 0;
@@ -122,7 +122,7 @@ do                                                                              
 int hex2long(char *hex, int64_t *key)
 {
     unsigned char *s = (unsigned char *)((void *)key);
-    unsigned char *p = (unsigned char *)hex, high = 0, low = 0, *e = p;
+    unsigned char *p = (unsigned char *)hex, high = 0, low = 0;
     int i = 0;
     if(p)
     {
@@ -133,14 +133,6 @@ int hex2long(char *hex, int64_t *key)
             *s++ = (unsigned char)((high << 4) | low);
             ++i;
         }
-        /*
-        fprintf(stdout, "%s::%d i:%d key:%lld id:", __FILE__, __LINE__, i, key);
-        for(i = 0; i< 16; i++)
-        {
-            fprintf(stdout, "%02x", e[i]);
-        }
-        fprintf(stdout, "\r\n");
-        */
     }
     return 0;
 }
@@ -176,9 +168,6 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
             conn->xids64[0] = xhead.id;
             conn->xids[0] = http_req->reqid;
             ACCESS_LOGGER(logger, "SEND_REQUIRE{%s %s key:%llu length:%d group[%d][%s:%d fd:%d]} from %s:%d ", http_methods[http_req->reqid].e, http_req->path, (uint64_t)(xhead.id), xhead.size, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
-            //unsigned char ttl = 0;int n = sizeof(ttl);
-            //getsockopt(xconn->fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, &n);
-            //fprintf(stdout, "%s::%d ttl:%d/%d\r\n", __FILE__, __LINE__, ttl, multicastd->session.multicast_ttl);
             if(http_req->reqid == HTTP_PUT)
                 xhead.cmd = DBASE_REQ_REQUIRE;
             else
@@ -190,7 +179,6 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
         }
         else
         {
-
             ACCESS_LOGGER(logger, "NO_CONN{%s %s key:%llu length:%d group[%d] from %s:%d}", http_methods[http_req->reqid].e, http_req->path, (uint64_t)(xhead.id), xhead.size, k, conn->remote_ip, conn->remote_port);
         }
     }
@@ -744,7 +732,7 @@ int multicastd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA
     MDISK *disks = NULL;
 
     if(conn && chunk && (disks = (MDISK *)chunk->data) 
-            && (ndisks = chunk->ndata/sizeof(MDISK)) > 0)
+            && (ndisks = (chunk->ndata/sizeof(MDISK))) > 0)
     {
         for(i = 0; i < ndisks; i++)
         {
@@ -828,7 +816,7 @@ void multicastd_heartbeat_handler(void *arg)
 {
     DBHEAD head = {0};
     CONN *conn = NULL;
-
+    
     if(public_groupid > 0 && (conn = multicastd->getconn(multicastd, public_groupid)))
     {
         head.cmd = DBASE_REQ_REPORT;
@@ -866,6 +854,11 @@ int sbase_initialize(SBASE *sbase, char *conf)
     else
     {
         FATAL_LOGGER(logger, "initialize xmap failed, %s", strerror(errno));
+    }
+    if((p = iniparser_getstr(dict, "XMAP:dbprefix")))
+    {
+        dbprefix = p;
+        ndbprefix = strlen(p);
     }
     /* SBASE */
     sbase->nchilds = iniparser_getint(dict, "SBASE:nchilds", 0);

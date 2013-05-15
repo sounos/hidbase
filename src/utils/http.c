@@ -1,18 +1,19 @@
 #include "http.h"
 #include "mtrie.h"
+#include "stime.h"
 #ifdef _HTTP_CHARSET_CONVERT
 #define _GNU_SOURCE
 #include <iconv.h>
 #include "chardet.h"
-#include "stime.h"
 #include "zstream.h"
 #define CHARSET_MAX 256
 #endif
 #ifndef _STATIS_YMON
 #define _STATIS_YMON
 /*
-static const char *wdays[]={"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
-static const char *ymonths[]= {
+static  char *wdays[]={"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+static char *http_encodings[] = {"deflate", "gzip", "bzip2", "compress"}; 
+static  char *ymonths[]= {
     "Jan", "Feb", "Mar",
     "Apr", "May", "Jun",
     "Jul", "Aug", "Sep",
@@ -51,7 +52,6 @@ do                                                                              
     }                                                                               \
     else *pp++ = *s++;                                                              \
 }while(0)
-static const char *http_encodings[] = {"deflate", "gzip", "bzip2", "compress"}; 
 static unsigned long crc32_tab[] = {
     0x00000000L, 0x77073096L, 0xee0e612cL, 0x990951baL, 0x076dc419L,
     0x706af48fL, 0xe963a535L, 0x9e6495a3L, 0x0edb8832L, 0x79dcb8a4L,
@@ -483,7 +483,7 @@ int http_cookie_line(HTTP_RESPONSE *http_resp, char *cookie)
                 if(http_resp->cookies[i].expire_len > 0)
                 {
                     /* expire */
-                    p += sprintf(p, "e=%u;", (unsigned int)str2time(bs+http_resp->cookies[i].expire_off));
+                    p += sprintf(p, "e=%lu;", (unsigned long int)str2time(bs+http_resp->cookies[i].expire_off));
                 }
                 if(http_resp->cookies[i].path_len > 0)
                 {

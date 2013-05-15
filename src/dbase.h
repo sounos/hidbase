@@ -325,6 +325,8 @@ int belement_v_double(BELEMENT *e, double *v);
 char *belement_v_string(BELEMENT *e);
 /* get value blob */
 int belement_v_blob(BELEMENT *e, char **v);
+/* genarate 64 bits key */
+int64_t dbase_kid(char *str, int len);
 #define BJSON_INIT(bjson) memset(&bjson, 0, sizeof(BJSON))
 #ifdef __cplusplus
  }

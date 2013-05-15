@@ -1890,6 +1890,16 @@ int dbio_close(DBIO *dbio)
     return -1;
 }
 
+/* genarate 64 bits key */
+int64_t dbase_kid(char *str, int len)
+{
+    int64_t kid = 0;
+    unsigned char digest[MD5_LEN];
+    md5((unsigned char *)str, len, digest);
+    memcpy(&kid, digest, sizeof(int64_t));
+    return kid;
+}
+
 #ifdef _DEBUG_DBIO
 int main(int argc, char **argv)
 {

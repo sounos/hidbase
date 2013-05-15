@@ -86,7 +86,7 @@ static char * strlwc(char * s)
  */
 /*--------------------------------------------------------------------------*/
 
-static char * strupc(char * s)
+extern char * strupc(char * s)
 {
     static char l[ASCIILINESZ+1];
     int i ;
@@ -174,7 +174,7 @@ static char * strcrop(char * s)
   (not re-entrant).
  */
 /*--------------------------------------------------------------------------*/
-static char * strstrip(char * s)
+extern char * strstrip(char * s)
 {
     static char l[ASCIILINESZ+1];
     char * last ;

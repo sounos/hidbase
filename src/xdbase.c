@@ -158,7 +158,7 @@ int xdbase_add_disk(XDBASE *xdbase, int port, off_t limit, int mode, char *disk)
         {
             x = 0;
             while(x < DBASE_MASK && xdbase->state->xdisks[x].status)++x; 
-            if(xdbase->state->xdisks[x].status == 0)
+            if(x < DBASE_MASK && xdbase->state->xdisks[x].status == 0)
             {
                 mmtrie_add(MMTR(xdbase->map), disk, n, x+1);
                 strcpy(xdbase->state->xdisks[x].disk, disk);
