@@ -623,6 +623,7 @@ int traced_quick_handler(CONN *conn, CB_DATA *packet)
 
     if(conn && packet && (head = (DBHEAD *)packet->data))
     {
+        ACCESS_LOGGER(logger, "QUICK{cmd:%d key:%llu} on %s:%d", head->cmd, (uint64_t)head->id, conn->remote_ip, conn->remote_port);
         ret = head->length;
     }
     return ret;
@@ -662,7 +663,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
             && resp->status == DBASE_STATUS_OK)
     {
         gid = traced_check_host_groupid(conn->remote_ip, resp->port);
-        ACCESS_LOGGER(logger, "Found{key:%llu cid:%d size:%d} on %s:%d", (uint64_t)resp->id, resp->cid, resp->size, conn->remote_ip, resp->port);
+        ACCESS_LOGGER(logger, "Found{cmd:%d key:%llu cid:%d size:%d} on %s:%d", resp->cmd, (uint64_t)resp->id, resp->cid, resp->size, conn->remote_ip, resp->port);
         memcpy(&xhead, resp, sizeof(DBHEAD));
         xhead.cmd = 0;
         switch(resp->cmd)
@@ -685,26 +686,30 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                 break;
         }
         //fprintf(stdout, "%s::%d cmd:%d|%d/%d/%d/%d\r\n", __FILE__, __LINE__, resp->cmd, DBASE_RESP_REQUIRE, xhead.cmd, DBASE_REQ_SET, DBASE_REQ_GET);
-        if(!(xconn = traced->getconn(traced, gid)))
+        if(xhead.cmd)
         {
-            xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, NULL);
-        }
-        if(xconn)
-        {
-            if(resp->cid > 0)
+            if(!(xconn = traced->getconn(traced, gid)))
+                xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, NULL);
+            if(xconn)
             {
-                xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
-                traced->newtransaction(traced, xconn, xhead.cmd);
+                if(resp->cid > 0)
+                {
+                    xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
+                    traced->newtransaction(traced, xconn, xhead.cmd);
+                }
+                else
+                {
+                    ACCESS_LOGGER(logger, "READY_GET{cmd:%d key:%llu cid:%d size:%d} on %s:%d", xhead.cmd, (uint64_t)xhead.id, xhead.cid, xhead.size, conn->remote_ip, resp->port);
+                    xconn->push_chunk(conn, &xhead, sizeof(DBHEAD));
+
+                }
+                ret = 0;
             }
             else
             {
-                xconn->push_chunk(conn, &xhead, sizeof(DBHEAD));
+                ACCESS_LOGGER(logger, "NO_FREE_CONN[%s:%d]{key:%llu cid:%d}", 
+                        conn->remote_ip, resp->port, (uint64_t)resp->id, resp->cid);
             }
-            ret = 0;
-        }
-        else
-        {
-            ACCESS_LOGGER(logger, "NO_FREE_CONN{key:%llu cid:%d}", (uint64_t)resp->id, resp->cid);
         }
         conn->over_session(conn);
     }
