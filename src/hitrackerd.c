@@ -66,7 +66,7 @@ static int ndbprefix = 5;
 static int group_conns_limit = 32;
 static int chunk_io_timeout = 60000000;
 static char *public_multicast = "233.8.8.8";
-static int public_multicast_limit = 16;
+static int public_multicast_limit = 24;
 static int public_groupid = 0;
 /* httpd packet reader */
 int httpd_packet_reader(CONN *conn, CB_DATA *buffer)
@@ -1069,7 +1069,7 @@ int sbase_initialize(SBASE *sbase, char *conf)
     multicastd->set_heartbeat(multicastd, multicastd->heartbeat_interval, 
             &multicastd_heartbeat_handler, multicastd);
     public_multicast = iniparser_getstr(dict, "MULTICASTD:public_multicast");
-    public_multicast_limit = iniparser_getint(dict, "MULTICASTD:public_multicast_limit", 16);
+    public_multicast_limit = iniparser_getint(dict, "MULTICASTD:public_multicast_limit", 24);
     multicast_network = iniparser_getstr(dict, "MULTICASTD:multicast_network");
     multicast_port = iniparser_getint(dict, "MULTICASTD:multicast_port", 2345);
     multicast_limit = iniparser_getint(dict, "MULTICASTD:multicast_limit", 64);
