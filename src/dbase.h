@@ -36,7 +36,7 @@ extern "C" {
 #define DBASE_STATUS_OK       0
 #define DBASE_STATUS_ERR      -1
 #define DBASE_MM_BASE         4096
-#define DBASE_MASK            24
+#define DBASE_MASK            256
 #define DBASE_TIMEOUT         1000000
 #define DBASE_LEFT_MAX        2147483648
 #define BJSON_BASE            65536

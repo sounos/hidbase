@@ -54,7 +54,7 @@ static SERVICE *traced = NULL;
 static MGROUP multicasts[DBASE_MASK];
 static char *multicast_network = "234.8.8";
 static int  multicast_port = 2345;
-static int  multicast_limit = 64;
+static int  multicast_limit = 8;
 static SERVICE *multicastd = NULL;
 static dictionary *dict = NULL;
 static void *http_headers_map = NULL;
@@ -63,10 +63,10 @@ static XMAP *xmap = NULL;
 static int query_wait_time = 100000;
 static char *dbprefix = "/mdb/";
 static int ndbprefix = 5;
-static int group_conns_limit = 32;
+static int group_conns_limit = 16;
 //static int chunk_io_timeout = 60000000;
 static char *public_multicast = "233.8.8.8";
-static int public_multicast_limit = 24;
+static int public_multicast_limit = 8;
 static int public_groupid = 0;
 /* httpd packet reader */
 int httpd_packet_reader(CONN *conn, CB_DATA *buffer)
@@ -734,14 +734,19 @@ int multicastd_quick_handler(CONN *conn, CB_DATA *packet)
 int multicastd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chunk)
 {
     int ret = -1, i = 0, ndisks = 0;
+    DBHEAD *head = NULL;
     MDISK *disks = NULL;
 
-    if(conn && chunk && (disks = (MDISK *)chunk->data) 
-            && (ndisks = (chunk->ndata/sizeof(MDISK))) > 0)
+    if(conn && chunk && packet && (head = (DBHEAD *)packet->data))
     {
-        for(i = 0; i < ndisks; i++)
+        if(head->cmd == DBASE_RESP_REPORT
+            && (disks = (MDISK *)chunk->data) 
+            && (ndisks = (chunk->ndata/sizeof(MDISK))) > 0)
         {
-            ret = traced_check_host_groupid(conn->remote_ip, disks[i].port);
+            for(i = 0; i < ndisks; i++)
+            {
+                ret = traced_check_host_groupid(conn->remote_ip, disks[i].port);
+            }
         }
         ret = conn->over_session(conn);
     }
@@ -804,14 +809,6 @@ void multicastd_onrunning(SERVICE *service)
                         multicast_limit, &(multicastd->session));
             }
         }
-        /*
-        if(public_groupid > 0 && (conn = multicastd->getconn(multicastd, public_groupid)))
-        {
-            head.cmd = DBASE_REQ_REPORT;
-            conn->push_chunk(conn, &head, sizeof(DBHEAD));
-            conn->over_session(conn);
-        }
-        */
     }
     return ;
 }
