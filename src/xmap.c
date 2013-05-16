@@ -14,6 +14,7 @@
 #include "mtrie.h"
 #include "db.h"
 #include "mmqueue.h"
+#include "mmtrie.h"
 #include "mmtree.h"
 #include "mmtree64.h"
 #include "dbase.h"
@@ -67,6 +68,21 @@ do                                                                              
     }                                                                                           \
 }while(0)
 
+#define CHECK_MDISKIO(ox, kid)                                                                 \
+do                                                                                              \
+{                                                                                               \
+    if(ox && kid >= ((off_t)ox->diskio.end/(off_t)sizeof(MDISK)))                              \
+    {                                                                                           \
+        ox->diskio.old = ox->diskio.end;                                                        \
+        ox->diskio.end = (off_t)((kid/XM_DISK_BASE)+1)*(off_t)XM_DISK_BASE*(off_t)sizeof(MDISK); \
+        if(ftruncate(ox->diskio.fd, ox->diskio.end)) break;                                     \
+        if(ox->diskio.map)                                                                      \
+        {                                                                                       \
+            memset(ox->diskio.map + ox->diskio.old, 0, ox->diskio.end - ox->diskio.old);        \
+        }                                                                                       \
+    }                                                                                           \
+}while(0)
+
 /* initialize XMAP */
 XMAP *xmap_init(char *basedir)
 {
@@ -89,6 +105,9 @@ XMAP *xmap_init(char *basedir)
         xmap->tree = mmtree_init(path);
         sprintf(path, "%s/%s", basedir, "xmap.tree64");
         xmap->tree64 = mmtree64_init(path);
+        /* kmap */
+        sprintf(path, "%s/%s", basedir, "xmap.kmap");
+        xmap->kmap = mmtrie_init(path);
         /* queue */
         sprintf(path, "%s/%s", basedir, "xmap.queue");
         xmap->queue = mmqueue_init(path);
@@ -124,6 +143,21 @@ XMAP *xmap_init(char *basedir)
                 if(xmap->state->masks[i].root == 0)
                     xmap->state->masks[i].root = mmtree64_new_tree(xmap->tree64);
             }
+        }
+        /* disk */
+        sprintf(path, "%s/%s", basedir, "xmap.disk");
+        if((xmap->diskio.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
+                && fstat(xmap->diskio.fd, &st) == 0)
+        {
+            if((xmap->diskio.map = mmap(NULL, sizeof(MDISK) * XM_DISK_MAX, PROT_READ|PROT_WRITE,
+                            MAP_SHARED, xmap->diskio.fd, 0)) == NULL
+                    || xmap->diskio.map == (void *)-1)
+            {
+                FATAL_LOGGER(xmap->logger, "mmap disk:%s failed, %s", path, strerror(errno));
+                _exit(-1);
+            }
+            xmap->disks = (MDISK *)(xmap->diskio.map);
+            xmap->diskio.end = st.st_size;
         }
         /* meta */
         sprintf(path, "%s/%s", basedir, "xmap.meta");
@@ -285,6 +319,31 @@ int xmap_add_host(XMAP *xmap, char *ip, int port, int val)
     return ret;
 }
 
+/* return diskid */
+int xmap_diskid(XMAP *xmap, MDISK *disk)
+{
+    unsigned char *ch = NULL;
+    char line[XM_PATH_MAX];
+    int ret = -1, id = 0, n = 0;
+
+    if(xmap && disk && disk->ip && disk->port > 0 
+            && (ch = (unsigned char *)&(disk->ip))
+            && (n = sprintf(line, "%u.%u.%u.%u:%u", 
+                    ch[0], ch[1], ch[2], ch[3], disk->port)) > 0)
+    {
+        MUTEX_LOCK(xmap->mutex);
+        id = xmap->state->disk_id_max + 1;
+        if((ret = mmtrie_add(xmap->kmap, line, n, id)) == id)
+        {
+            xmap->state->disk_id_max++;
+            CHECK_MDISKIO(xmap,id);
+            memcpy(&(xmap->disks[id]), disk, sizeof(MDISK));
+        }
+        MUTEX_UNLOCK(xmap->mutex);
+    }
+    return ret;
+}
+
 /* cache data */
 int xmap_cache(XMAP *xmap, char *data, int ndata)
 {
@@ -355,9 +414,30 @@ void xmap_clean(XMAP *xmap)
         mmtree_close(xmap->tree);
         mmtree64_close(xmap->tree64);
         mmqueue_clean(xmap->queue);
+        mmtrie_clean(xmap->kmap);
         mtrie_clean(xmap->mtrie);
         db_reset(xmap->db);
         db_clean(xmap->db);
+        if(xmap->diskio.map) 
+        {
+            munmap(xmap->diskio.map, xmap->diskio.size);
+            xmap->diskio.map = NULL;
+        }
+        if(xmap->diskio.fd > 0) 
+        {
+            close(xmap->diskio.fd);
+            xmap->diskio.fd = 0;
+        }
+        if(xmap->metaio.map) 
+        {
+            munmap(xmap->metaio.map, xmap->metaio.size);
+            xmap->metaio.map = NULL;
+        }
+        if(xmap->metaio.fd > 0) 
+        {
+            close(xmap->metaio.fd);
+            xmap->metaio.fd = 0;
+        }
         if(xmap->stateio.map) 
         {
             munmap(xmap->stateio.map, xmap->stateio.size);

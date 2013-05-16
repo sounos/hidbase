@@ -7,6 +7,9 @@
 #define XM_META_MAX     2000000000
 #define XM_META_BASE    1000000
 #define XM_META_INCRE   1000000
+#define XM_DISK_MAX     2000000
+#define XM_DISK_BASE    1000
+#define XM_DISK_INCRE   1000
 #define XM_STATUS_FREE  0x00
 #define XM_STATUS_WAIT  0x01
 
@@ -23,15 +26,6 @@ typedef struct _XMMETA
     time_t modtime;
     XMHOST hosts[XM_HOST_MAX];
 }XMMETA;
-typedef struct _XMDISK
-{
-    int     ip;
-    ushort  port;
-    ushort  count;
-    uint64_t total;
-    uint64_t limit;
-    uint64_t free;
-}XMDISK;
 typedef struct _XMASK
 {
     int total;
@@ -41,10 +35,10 @@ typedef struct _XMSTATE
 {
     int status;
     int id_max;
+    int disk_id_max;
     int qwait;
     int id_wait;
     int qleft;
-    int bits;
     XMASK masks[DBASE_MASK];
 }XMSTATE;
 typedef struct _XMIO
@@ -63,7 +57,7 @@ typedef struct _XMAP
     XMIO metaio;
     XMSTATE *state;
     XMMETA *metas;
-    XMDISK *disks;
+    MDISK *disks;
     void *mutex;
     void *cmutex;
     void *tree64;
