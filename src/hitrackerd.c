@@ -745,6 +745,7 @@ int multicastd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA
         {
             for(i = 0; i < ndisks; i++)
             {
+                disks[i].ip = (int)inet_addr(conn->remote_ip);
                 ret = traced_check_host_groupid(conn->remote_ip, disks[i].port);
             }
         }

@@ -14,23 +14,23 @@ typedef struct _XMASK
 }XMASK;
 typedef struct _XDISK
 {
-    int     status;
-    int     total;
-    int     nmasks;
-    int     nodeid;
-    int     port;
-    int     mode;
-    int     qwait;
-    int     qleft;
-    int     qrelay;
-    int     qid;
+    ushort     status;
+    ushort     nmasks;
+    ushort     port;
+    ushort     mode;
+    uint32_t   total;
+    uint32_t   modtime;
+    uint32_t   qwait;
+    uint32_t   qleft;
+    uint32_t   qrelay;
+    uint32_t   qid;
     BJSON   record;
     void    *db;
     void    *wait;
     void    *cache;
     MUTEX   *mutex;
-    off_t   limit;
-    off_t   free;
+    uint64_t   limit;
+    uint64_t   free;
     char    disk[XDB_PATH_MAX];
     XMASK   masks[DBASE_MASK];
 }XDISK;

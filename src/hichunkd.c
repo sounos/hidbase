@@ -876,6 +876,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                             disk->total = xdb->state->xdisks[i].total;
                             disk->limit = xdb->state->xdisks[i].limit;
                             disk->free = xdb->state->xdisks[i].free;
+                            disk->modtime = xdb->state->xdisks[i].modtime;
                             ++disk;
                         }
                     }

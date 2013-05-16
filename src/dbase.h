@@ -59,8 +59,8 @@ typedef struct _DBHEAD
 {
     short           status;
     short           cmd;
-    unsigned short  index;
-    unsigned short  port;
+    ushort          index;
+    ushort          port;
     int             cid;
     int             bits;
     int             qid;
@@ -71,10 +71,12 @@ typedef struct _DBHEAD
 }DBHEAD;
 typedef struct _MDISK
 {
-    int port;
-    int total;
-    off_t limit;
-    off_t free;
+    int      ip;
+    int      port;
+    uint32_t modtime;
+    uint32_t total;
+    uint64_t limit;
+    uint64_t free;
 }MDISK;
 typedef struct _DBMETA
 {

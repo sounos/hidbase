@@ -23,6 +23,15 @@ typedef struct _XMMETA
     time_t modtime;
     XMHOST hosts[XM_HOST_MAX];
 }XMMETA;
+typedef struct _XMDISK
+{
+    int     ip;
+    ushort  port;
+    ushort  count;
+    uint64_t total;
+    uint64_t limit;
+    uint64_t free;
+}XMDISK;
 typedef struct _XMASK
 {
     int total;
@@ -50,13 +59,16 @@ typedef struct _XMIO
 typedef struct _XMAP
 {
     XMIO stateio;
+    XMIO diskio;
     XMIO metaio;
     XMSTATE *state;
     XMMETA *metas;
+    XMDISK *disks;
     void *mutex;
     void *cmutex;
     void *tree64;
     void *tree;
+    void *kmap;
     void *mtrie;
     void *logger;
     void *db;
