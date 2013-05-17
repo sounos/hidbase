@@ -21,10 +21,10 @@ typedef struct _XMHOST
 }XMHOST;
 typedef struct _XMMETA
 {
-    short status;
-    short count;
+    short    status;
+    short    count;
     uint32_t modtime;
-    XMHOST hosts[XM_HOST_MAX];
+    uint32_t list[XM_HOST_MAX];
 }XMMETA;
 typedef struct _XMDISK
 {
