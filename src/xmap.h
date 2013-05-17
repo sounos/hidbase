@@ -12,7 +12,7 @@
 #define XM_DISK_INCRE   1000
 #define XM_STATUS_FREE  0x00
 #define XM_STATUS_WAIT  0x01
-
+#define XM_NO_GROUPID   -2
 typedef struct _XMHOST
 {
     int ip;
@@ -26,6 +26,16 @@ typedef struct _XMMETA
     time_t modtime;
     XMHOST hosts[XM_HOST_MAX];
 }XMMETA;
+typedef struct _XMDISK
+{
+    short    groupid;
+    ushort   port;
+    int      ip;
+    uint32_t modtime;
+    uint32_t total;
+    uint64_t limit;
+    uint64_t free;
+}XMDISK;
 typedef struct _XMASK
 {
     int total;
@@ -57,7 +67,7 @@ typedef struct _XMAP
     XMIO metaio;
     XMSTATE *state;
     XMMETA *metas;
-    MDISK *disks;
+    XMDISK *disks;
     void *mutex;
     void *cmutex;
     void *tree64;
@@ -78,10 +88,12 @@ int xmap_qid(XMAP *xmap, int64_t id, int *status, XMHOST *xhost);
 int xmap_check(XMAP *xmap, int qid, XMHOST *xhost);
 /* query over */
 int xmap_over(XMAP *xmap, int qid, XMHOST *xhost);
-/* check host exists */
-int xmap_check_host(XMAP *xmap, char *ip, int port);
-/* add host */
-int xmap_add_host(XMAP *xmap, char *ip, int port, int val);
+/* return diskid */
+int xmap_set_disk(XMAP *xmap, MDISK *disk);
+/* set groupid */
+int xmap_set_groupid(XMAP *xmap, int diskid, int groupid);
+/* get diskid */
+int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid);
 /* cache data */
 int xmap_cache(XMAP *xmap, char *data, int ndata);
 /* cache data size */

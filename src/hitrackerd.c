@@ -381,17 +381,17 @@ int httpd_oob_handler(CONN *conn, CB_DATA *oob)
 }
 
 /* check host groupid */
-int traced_check_host_groupid(char *ip, int port)
+int traced_check_disk_groupid(char *ip, int port)
 {
+    int gid = -1, diskid = 0;
     SESSION session = {0};
-    int gid = -1;
 
-    if(!(gid = xmap_check_host(xmap, ip, port)))
+    if((diskid = xmap_diskid(xmap, ip, port, &gid)) > 0 && gid == XM_NO_GROUPID)
     {
         memcpy(&session, &(traced->session), sizeof(SESSION));
         session.flags |= SB_NONBLOCK;
         gid = traced->addgroup(traced, ip, port, group_conns_limit, &session);
-        xmap_add_host(xmap, ip, port, gid);
+        xmap_set_groupid(xmap, diskid, gid);
     }
     return gid;
 }
@@ -662,7 +662,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
     if(conn && packet && (resp = (DBHEAD *)packet->data) 
             && resp->status == DBASE_STATUS_OK)
     {
-        gid = traced_check_host_groupid(conn->remote_ip, resp->port);
+        gid = traced_check_disk_groupid(conn->remote_ip, resp->port);
         ACCESS_LOGGER(logger, "Found{cmd:%d key:%llu cid:%d size:%d} on %s:%d", resp->cmd, (uint64_t)resp->id, resp->cid, resp->size, conn->remote_ip, resp->port);
         memcpy(&xhead, resp, sizeof(DBHEAD));
         xhead.cmd = 0;
@@ -746,7 +746,7 @@ int multicastd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA
             for(i = 0; i < ndisks; i++)
             {
                 disks[i].ip = (int)inet_addr(conn->remote_ip);
-                ret = traced_check_host_groupid(conn->remote_ip, disks[i].port);
+                xmap_set_disk(xmap, &(disks[i]));
             }
         }
         ret = conn->over_session(conn);

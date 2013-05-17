@@ -7,6 +7,9 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/time.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <sys/statvfs.h>
 #include "xmap.h"
 #include "logger.h"
@@ -68,13 +71,13 @@ do                                                                              
     }                                                                                           \
 }while(0)
 
-#define CHECK_MDISKIO(ox, kid)                                                                 \
+#define CHECK_XMDISKIO(ox, kid)                                                                 \
 do                                                                                              \
 {                                                                                               \
-    if(ox && kid >= ((off_t)ox->diskio.end/(off_t)sizeof(MDISK)))                              \
+    if(ox && kid >= ((off_t)ox->diskio.end/(off_t)sizeof(XMDISK)))                              \
     {                                                                                           \
         ox->diskio.old = ox->diskio.end;                                                        \
-        ox->diskio.end = (off_t)((kid/XM_DISK_BASE)+1)*(off_t)XM_DISK_BASE*(off_t)sizeof(MDISK); \
+        ox->diskio.end = (off_t)((kid/XM_DISK_BASE)+1)*(off_t)XM_DISK_BASE*(off_t)sizeof(XMDISK); \
         if(ftruncate(ox->diskio.fd, ox->diskio.end)) break;                                     \
         if(ox->diskio.map)                                                                      \
         {                                                                                       \
@@ -149,14 +152,14 @@ XMAP *xmap_init(char *basedir)
         if((xmap->diskio.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
                 && fstat(xmap->diskio.fd, &st) == 0)
         {
-            if((xmap->diskio.map = mmap(NULL, sizeof(MDISK) * XM_DISK_MAX, PROT_READ|PROT_WRITE,
+            if((xmap->diskio.map = mmap(NULL, sizeof(XMDISK) * XM_DISK_MAX, PROT_READ|PROT_WRITE,
                             MAP_SHARED, xmap->diskio.fd, 0)) == NULL
                     || xmap->diskio.map == (void *)-1)
             {
                 FATAL_LOGGER(xmap->logger, "mmap disk:%s failed, %s", path, strerror(errno));
                 _exit(-1);
             }
-            xmap->disks = (MDISK *)(xmap->diskio.map);
+            xmap->disks = (XMDISK *)(xmap->diskio.map);
             xmap->diskio.end = st.st_size;
         }
         /* meta */
@@ -320,7 +323,7 @@ int xmap_add_host(XMAP *xmap, char *ip, int port, int val)
 }
 
 /* return diskid */
-int xmap_diskid(XMAP *xmap, MDISK *disk)
+int xmap_set_disk(XMAP *xmap, MDISK *disk)
 {
     unsigned char *ch = NULL;
     char line[XM_PATH_MAX];
@@ -336,8 +339,60 @@ int xmap_diskid(XMAP *xmap, MDISK *disk)
         if((ret = mmtrie_add(xmap->kmap, line, n, id)) == id)
         {
             xmap->state->disk_id_max++;
-            CHECK_MDISKIO(xmap,id);
-            memcpy(&(xmap->disks[id]), disk, sizeof(MDISK));
+            CHECK_XMDISKIO(xmap,id);
+            xmap->disks[id].limit = disk->limit;
+            xmap->disks[id].free = disk->free;
+            xmap->disks[id].total = disk->total;
+            xmap->disks[id].modtime = disk->modtime;
+            xmap->disks[id].ip = disk->ip;
+            xmap->disks[id].port = disk->port;
+        }
+        MUTEX_UNLOCK(xmap->mutex);
+    }
+    return ret;
+}
+
+/* set groupid */
+int xmap_set_groupid(XMAP *xmap, int diskid, int groupid)
+{
+    int ret = -1;
+
+    if(xmap && groupid > 0 && diskid > 0 
+            && diskid < xmap->state->disk_id_max)
+    {
+        MUTEX_LOCK(xmap->mutex);
+        ret = xmap->disks[diskid].groupid = groupid;
+        MUTEX_UNLOCK(xmap->mutex);
+    }
+    return ret;
+}
+
+/* get diskid */
+int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
+{
+    char line[XM_PATH_MAX];
+    int ret = -1, id = 0, n = 0;
+
+    if(xmap && ip && port > 0 && (n = sprintf(line, "%s:%u", ip, port)) > 0)
+    {
+        MUTEX_LOCK(xmap->mutex);
+        id = xmap->state->disk_id_max + 1;
+        if((ret = mmtrie_add(xmap->kmap, line, n, id)) == id)
+        {
+            xmap->state->disk_id_max++;
+            CHECK_XMDISKIO(xmap,id);
+            xmap->disks[id].ip = inet_addr(ip);
+            xmap->disks[id].port = port;
+            xmap->disks[id].groupid = -1;
+            *groupid = XM_NO_GROUPID;
+        }
+        else
+        {
+            if(ret > 0 && ret <= xmap->state->disk_id_max 
+                    && xmap->disks[ret].groupid > 0)
+            {
+                *groupid = xmap->disks[ret].groupid; 
+            }
         }
         MUTEX_UNLOCK(xmap->mutex);
     }
