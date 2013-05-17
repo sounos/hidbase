@@ -23,7 +23,7 @@ typedef struct _XMMETA
 {
     short status;
     short count;
-    time_t modtime;
+    uint32_t modtime;
     XMHOST hosts[XM_HOST_MAX];
 }XMMETA;
 typedef struct _XMDISK
