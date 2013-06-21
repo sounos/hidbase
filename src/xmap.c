@@ -237,12 +237,14 @@ int xmap_qid(XMAP *xmap, int64_t key, int *status, XMHOST *xhost)
             xmap->metas[qid].count = 0;
             xmap->metas[qid].modtime = 0;
             xmap->metas[qid].status = 0;
-            memset(xmap->metas[qid].hosts, 0, sizeof(XMHOST) * XM_HOST_MAX);
+            memset(xmap->metas[qid].list, 0, sizeof(uint32_t) * XM_HOST_MAX);
         }
         else
         {
             if((k = xmap->metas[qid].count) > 0)
+            {
                 memcpy(xhost, &(xmap->metas[qid].hosts[k - 1]), sizeof(XMHOST));
+            }
         }
         if((*status = xmap->metas[qid].status) == XM_STATUS_FREE)
         {

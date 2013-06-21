@@ -17,14 +17,15 @@ typedef struct _XMHOST
 {
     int ip;
     short port;
-    short version;
+    short gid;
 }XMHOST;
+typedef XMDISKLIST uint32_t[XM_HOST_MAX];
 typedef struct _XMMETA
 {
     short    status;
     short    count;
     uint32_t modtime;
-    uint32_t list[XM_HOST_MAX];
+    uint32_t disks[XM_HOST_MAX];
 }XMMETA;
 typedef struct _XMDISK
 {

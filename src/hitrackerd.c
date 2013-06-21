@@ -154,6 +154,13 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
         hex2long(s, &(xhead.id)); 
         k = DBKMASK(xhead.id);
         gid = multicasts[k].groupid;
+        if(http_req->reqid == HTTP_PUT)
+            xhead.cmd = DBASE_REQ_REQUIRE;
+        else
+            xhead.cmd = DBASE_REQ_GET;
+        xhead.index = conn->index;
+        conn->xids64[0] = xhead.id;
+        conn->xids[0] = http_req->reqid;
         if(data && ndata > 0)
         {
             //fprintf(stdout, "%s::%d ndata:%d\r\n", __FILE__, __LINE__, ndata);
@@ -162,24 +169,26 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
             xhead.size = ndata;
             ACCESS_LOGGER(logger, "CACHE{key:%llu cid:%d length:%d} group[%d] from %s:%d ", (uint64_t)(xhead.id), xhead.cid, xhead.size, k, conn->remote_ip, conn->remote_port);
         }
-        ACCESS_LOGGER(logger, "READY_REQUIRE{%s %s key:%llu length:%d cid:%d group[%d]} from %s:%d ", http_methods[http_req->reqid].e, http_req->path, (uint64_t)(xhead.id), xhead.size, xhead.cid, k, conn->remote_ip, conn->remote_port);
-        if((xconn = multicastd->getconn(multicastd, gid)))
+        //trackerd_packet_handler
+        if((qid = xmap_qid(xmap, xhead.id, &status, &xhost)) > 0) 
         {
-            conn->xids64[0] = xhead.id;
-            conn->xids[0] = http_req->reqid;
-            ACCESS_LOGGER(logger, "SEND_REQUIRE{%s %s key:%llu length:%d group[%d][%s:%d fd:%d]} from %s:%d ", http_methods[http_req->reqid].e, http_req->path, (uint64_t)(xhead.id), xhead.size, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
-            if(http_req->reqid == HTTP_PUT)
-                xhead.cmd = DBASE_REQ_REQUIRE;
-            else
-                xhead.cmd = DBASE_REQ_FIND;
-            xhead.index = conn->index;
-            xhead.length = 0;
-            xconn->push_chunk(xconn, &xhead, sizeof(DBHEAD));
-            xconn->over(xconn);
+            xconn->save_cache(xconn, &xhead, sizeof(XHEAD));
         }
         else
         {
-            ACCESS_LOGGER(logger, "NO_CONN{%s %s key:%llu length:%d group[%d] from %s:%d}", http_methods[http_req->reqid].e, http_req->path, (uint64_t)(xhead.id), xhead.size, k, conn->remote_ip, conn->remote_port);
+            ACCESS_LOGGER(logger, "READY_REQUIRE{%s %s key:%llu length:%d cid:%d group[%d]} from %s:%d ", http_methods[http_req->reqid].e, http_req->path, (uint64_t)(xhead.id), xhead.size, xhead.cid, k, conn->remote_ip, conn->remote_port);
+            if((xconn = multicastd->getconn(multicastd, gid)))
+            {
+                       ACCESS_LOGGER(logger, "SEND_REQUIRE{%s %s key:%llu length:%d group[%d][%s:%d fd:%d]} from %s:%d ", http_methods[http_req->reqid].e, http_req->path, (uint64_t)(xhead.id), xhead.size, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
+
+                xhead.length = 0;
+                xconn->push_chunk(xconn, &xhead, sizeof(DBHEAD));
+                xconn->over(xconn);
+            }
+            else
+            {
+                ACCESS_LOGGER(logger, "NO_CONN{%s %s key:%llu length:%d group[%d] from %s:%d}", http_methods[http_req->reqid].e, http_req->path, (uint64_t)(xhead.id), xhead.size, k, conn->remote_ip, conn->remote_port);
+            }
         }
     }
     return ret;
@@ -396,6 +405,60 @@ int traced_check_disk_groupid(char *ip, int port)
     return gid;
 }
 
+/* handling request */
+int traced_request_handler(CONN *conn, DBHEAD *xhead)
+{
+    int ret = -1, status = 0, qid = 0, gid = 0;
+    CONN *xconn = NULL;
+    XMHOST xhost = {0};
+
+    if(conn && xhead)
+    {
+        conn->save_cache(conn, xhead, sizeof(DBHEAD));
+        gid = multicasts[DBKMASK(xhead->id)].groupid;
+        switch(xhead->cmd)
+        {
+            case DBASE_REQ_FIND:
+                if((qid = xmap_qid(xmap, xhead->id, &status, &xhost)) > 0)
+                {
+                    xhead->qid = qid;
+                    if(xhost.ip)
+                    {
+                        xhead->ip = xhost.ip;
+                        xhead->port = xhost.port;
+                        xhead->cmd |= DBASE_CMD_BASE;
+                        conn->push_chunk(conn, xhead, sizeof(DBHEAD));
+                    }
+                    else if(status == XM_STATUS_WAIT)
+                    {
+                        conn->wait_evtimeout(conn, query_wait_time);
+                    }
+                    else
+                    {
+                        if((xconn = multicastd->getconn(multicastd, gid))) 
+                        {
+                            xhead->index = conn->index;
+                            xconn->push_chunk(xconn, xhead, sizeof(DBHEAD));
+                            xconn->over(xconn);
+                        }
+                    }
+                    ret = 0;
+                }
+                break;
+            case DBASE_REQ_REQUIRE:
+                if((xconn = multicastd->getconn(multicastd, gid))) 
+                {
+                    xhead->index = conn->index;
+                    xconn->push_chunk(xconn, xhead, sizeof(DBHEAD));
+                    xconn->over(xconn);
+                    ret = 0;
+                }
+                break;
+        }
+    }
+    return ret;
+}
+
 /* trackerd packet handler */
 int trackerd_packet_handler(CONN *conn, CB_DATA *packet)
 {
@@ -406,49 +469,14 @@ int trackerd_packet_handler(CONN *conn, CB_DATA *packet)
 
     if(conn && packet && (xhead = (DBHEAD *)packet->data))
     {
-        if(xhead->length > 0) conn->save_cache(conn, xhead, sizeof(DBHEAD));
+        if(xhead->length > 0) 
+        {
+            //conn->save_cache(conn, xhead, sizeof(DBHEAD));
+            conn->recv_chunk(conn, xhead->length);
+        }
         else
         {
-            gid = multicasts[DBKMASK(xhead->id)].groupid;
-            switch(xhead->cmd)
-            {
-                case DBASE_REQ_FIND:
-                    if((qid = xmap_qid(xmap, xhead->id, &status, &xhost)) > 0)
-                    {
-                        xhead->qid = qid;
-                        if(xhost.ip)
-                        {
-                           xhead->ip = xhost.ip;
-                           xhead->port = xhost.port;
-                           xhead->cmd |= DBASE_CMD_BASE;
-                           conn->push_chunk(conn, xhead, sizeof(DBHEAD));
-                        }
-                        else if(status == XM_STATUS_WAIT)
-                        {
-                            conn->wait_evtimeout(conn, query_wait_time);
-                        }
-                        else
-                        {
-                            if((xconn = multicastd->getconn(multicastd, gid))) 
-                            {
-                                xhead->index = conn->index;
-                                xconn->push_chunk(xconn, xhead, sizeof(DBHEAD));
-                                xconn->over(xconn);
-                            }
-                        }
-                        ret = 0;
-                    }
-                    break;
-                case DBASE_REQ_REQUIRE:
-                    if((xconn = multicastd->getconn(multicastd, gid))) 
-                    {
-                        xhead->index = conn->index;
-                        xconn->push_chunk(xconn, xhead, sizeof(DBHEAD));
-                        xconn->over(xconn);
-                        ret = 0;
-                    }
-                    break;
-            }
+            traced_request_handler(conn, xhead);
         }
     }
     return ret;
@@ -457,11 +485,14 @@ int trackerd_packet_handler(CONN *conn, CB_DATA *packet)
 /* data handler */
 int trackerd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chunk)
 {
+    DBHEAD *xhead = NULL;
     int ret = -1;
 
-    if(conn && packet)
+    if(conn && packet && (xhead = (DBHEAD *)(packet->data)))
     {
-
+        xhead->cid = xmap_cache(xmap, chunk->data, chunk->ndata);
+        xhead->size = chunk->ndata;
+        traced_request_handler(conn, xhead);
     }
     return ret;
 }
@@ -657,7 +688,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
     DBHEAD *resp = NULL, xhead = {0};
     int ret = -1, gid = 0;
     CONN *xconn = NULL;
-    XMHOST xhost = {0};
+    //XMHOST xhost = {0};
 
     if(conn && packet && (resp = (DBHEAD *)packet->data) 
             && resp->status == DBASE_STATUS_OK)
@@ -671,8 +702,8 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
             case DBASE_RESP_FIND:
                 if(resp->size > 0)
                 {
-                    xhost.ip = resp->ip;
-                    xhost.port = resp->port;
+                    //xhost.ip = resp->ip;
+                    //xhost.port = resp->port;
                     //ret = xmap_over(xmap, resp->qid, &xhost);
                     xhead.cmd = DBASE_REQ_GET;
                     xhead.length = 0;
@@ -680,7 +711,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                     xhead.cid = 0;
                 }
                 break;
-            case DBASE_RESP_REQUIRE:
+            case DBASE_RESP_REQUIRE
                 xhead.cmd = DBASE_REQ_SET;
                 //xhead.size = 0;
                 break;
