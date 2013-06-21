@@ -225,47 +225,65 @@ int xmap_kid(XMAP *xmap, int64_t key)
 }
 
 /* query id */
-int xmap_qid(XMAP *xmap, int64_t key, int *status, XMHOST *xhost)
+int xmap_qid(XMAP *xmap, int64_t key, int *status, XMSETS *xsets, int *num)
 {
-    int qid = -1, k = 0;
+    int qid = -1, k = 0, n = 0;
 
-    if(xmap && key && xhost && (qid = xmap_kid(xmap, key)) > 0)
+    if(xmap && key && xsets && num && (qid = xmap_kid(xmap, key)) > 0)
     {
         MUTEX_LOCK(xmap->mutex);  
         if(xmap->metas[qid].modtime < xmap->start_time) 
         {
-            xmap->metas[qid].count = 0;
+            *num = xmap->metas[qid].count = 0;
             xmap->metas[qid].modtime = 0;
-            xmap->metas[qid].status = 0;
+            xmap->metas[qid].status = XM_STATUS_WAIT;
             memset(xmap->metas[qid].list, 0, sizeof(uint32_t) * XM_HOST_MAX);
         }
         else
         {
-            if((k = xmap->metas[qid].count) > 0)
+            if((*num = n = xmap->metas[qid].count) > 0)
             {
-                memcpy(xhost, &(xmap->metas[qid].hosts[k - 1]), sizeof(XMHOST));
+                while(--n >= 0)
+                {
+                    if((k = xmap->metas[qid].lists[n]) > 0 && k <= xmap->state->disk_id_max)
+                    {
+                        xsets->lists[n].ip = xmap->disks[k].ip;
+                        xsets->lists[n].port = xmap->disks[k].port; 
+                        xsets[n].gid = xmap->disks[k].groupid;
+                    }
+                }
+                *status = xmap->metas[qid].status;
             }
-        }
-        if((*status = xmap->metas[qid].status) == XM_STATUS_FREE)
-        {
-            xmap->metas[qid].status = XM_STATUS_WAIT;
+            else
+            {
+                xmap->metas[qid].status = XM_STATUS_WAIT;
+                xmap->metas[qid].modtime = 0;
+                memset(xmap->metas[qid].list, 0, sizeof(uint32_t) * XM_HOST_MAX);
+            }
         }
         MUTEX_UNLOCK(xmap->mutex);
     }
     return qid;
 }
 
-int xmap_check(XMAP *xmap, int qid, XMHOST *xhost)
+int xmap_check(XMAP *xmap, int qid, XMSETS *xsets)
 {
-    int k = 0, ret = -1;
+    int k = 0, ret = -1, n = 0, k = 0;
 
-    if(xmap && xhost && qid > 0)
+    if(xmap && xsets && qid > 0)
     {
         MUTEX_LOCK(xmap->mutex);  
-        if(qid < xmap->state->id_max && (k = xmap->metas[qid].count) > 0)
+        if(qid <= xmap->state->id_max && (ret = n = xmap->metas[qid].count) > 0)
         {
-            memcpy(xhost, &(xmap->metas[qid].hosts[k - 1]), sizeof(XMHOST));
-            ret = qid;
+            while(--n >= 0)
+            {
+                if((k = xmap->metas[qid].lists[n]) > 0 && k <= xmap->state->disk_id_max)
+                {
+                    xsets->lists[n].ip = xmap->disks[k].ip;
+                    xsets->lists[n].port = xmap->disks[k].port; 
+                    xsets->lists[n].gid = xmap->disks[k].groupid;
+                }
+            }
         }
         MUTEX_UNLOCK(xmap->mutex);
     }
@@ -274,11 +292,11 @@ int xmap_check(XMAP *xmap, int qid, XMHOST *xhost)
 
 
 /* query over */
-int xmap_over(XMAP *xmap, int qid, XMHOST *xhost)
+int xmap_over(XMAP *xmap, int qid, int diskid)
 {
     int ret = -1, k = 0;
 
-    if(xmap && qid > 0 && xhost)
+    if(xmap && qid > 0 && diskid > 0)
     {
         MUTEX_LOCK(xmap->mutex);
         if(qid <= xmap->state->id_max)
@@ -290,7 +308,9 @@ int xmap_over(XMAP *xmap, int qid, XMHOST *xhost)
             }
             k = xmap->metas[qid].count++;
             if(k < XM_HOST_MAX)
-                memcpy(&(xmap->metas[qid].hosts[k]), xhost, sizeof(XMHOST));
+            {
+                xmap->metas[qid].lists[k] = diskid;
+            }
             ret = qid;
         }
         MUTEX_UNLOCK(xmap->mutex);

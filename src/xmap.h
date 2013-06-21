@@ -19,6 +19,10 @@ typedef struct _XMHOST
     short port;
     short gid;
 }XMHOST;
+typedef struct _XMSETS
+{
+    XMHOST lists[XM_HOST_MAX];
+}XMSETS;
 typedef XMDISKLIST uint32_t[XM_HOST_MAX];
 typedef struct _XMMETA
 {
