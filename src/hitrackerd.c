@@ -393,41 +393,73 @@ int traced_check_disk_groupid(char *ip, int port)
 /* handling request */
 int traced_request_handler(CONN *conn, DBHEAD *xhead)
 {
-    int ret = -1, status = 0, qid = 0, gid = 0, n = 0;
+    int ret = -1, status = 0, k = 0, qid = 0, gid = 0, n = 0;
     CONN *xconn = NULL;
     XMSETS xsets = {0};
 
     if(conn && xhead && (qid = xmap_qid(xmap, xhead.id, &status, &xsets, &n))> 0)
     {
-        if(status == XM_STATUS_FREE)
+        if(n < 1 && status == XM_STATUS_FREE)
         {
-            //xhead->ip = xhost.ip;
-            //xhead->port = xhost.port;
-            //xhead->cmd |= DBASE_CMD_BASE;
-            //conn->push_chunk(conn, xhead, sizeof(DBHEAD));
-        }
-        else if(status == XM_STATUS_WAIT)
-        {
-            conn->wait_evtimeout(conn, query_wait_time);
-        }
-        else
-        {
-            gid = multicasts[DBKMASK(xhead->id)].groupid;
+            k = DBKMASK(xhead->id);
+            gid = multicasts[k].groupid;
             if((xconn = multicastd->getconn(multicastd, gid))) 
             {
-                //ACCESS_LOGGER(logger, "SEND_REQUIRE{key:%llu length:%d group[%d][%s:%d fd:%d]} from %s:%d ",(uint64_t)(xhead.id), xhead.size, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
-                if(xhead->cmd == DBASE_CMD_GET) xhead->cmd = DBASE_CMD_FIND;
-                if(xhead->cmd == DBASE_CMD_SET) xhead->cmd = DBASE_CMD_REQUIRE;
+                ACCESS_LOGGER(logger, "SEND_REQUIRE{key:%llu length:%d group[%d][%s:%d fd:%d]} from %s:%d ",(uint64_t)(xhead.id), xhead.size, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
                 xhead->index = conn->index;
                 xconn->push_chunk(xconn, xhead, sizeof(DBHEAD));
                 xconn->over(xconn);
             }
             else
             {
-                //ACCESS_LOGGER(logger, "NO_CONN{key:%llu length:%d group[%d] from %s:%d}", (uint64_t)(xhead.id), xhead.size, k, conn->remote_ip, conn->remote_port);
+                ACCESS_LOGGER(logger, "NO_CONN{key:%llu length:%d group[%d] from %s:%d}", (uint64_t)(xhead.id), xhead.size, k, conn->remote_ip, conn->remote_port);
+                xmap_over(xmap, qid, NULL);
             }
         }
-    }
+        else if(n > 0 && status == XM_STATUS_FREE)
+        {
+            if(xhead->cmd == DBASE_REQ_SET || xhead->cmd == DBASE_REQ_GET)
+            {
+                for(i = 0; i < n; i++)
+                {
+                    gid = xsets.lists[i].gid;
+                    if(!(xconn = traced->getconn(traced, gid)))
+                        xconn = traced->newconn(traced, -1, -1, xsets.lists[i].ip, xsets.lists[i].port, NULL);
+                    if(xconn)
+                    {
+                        if(resp->cid > 0)
+                        {
+                            xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
+                            traced->newtransaction(traced, xconn, xhead.cmd);
+                        }
+                        else
+                        {
+                            ACCESS_LOGGER(logger, "READY_GET{cmd:%d key:%llu cid:%d size:%d} on %s:%d", xhead.cmd, (uint64_t)xhead.id, xhead.cid, xhead.size, conn->remote_ip, resp->port);
+                            xconn->push_chunk(conn, &xhead, sizeof(DBHEAD));
+
+                        }
+                        ret = 0;
+                        if(xhead->cmd == DBASE_REQ_GET) break;
+                    }
+                    else
+                    {
+                        ACCESS_LOGGER(logger, "NO_FREE_CONN[%s:%d]{key:%llu cid:%d}",
+                                conn->remote_ip, resp->port, (uint64_t)resp->id, resp->cid);
+                    }
+                }
+            }
+            else 
+            {
+                xhead->cmd |= DBASE_CMD_BASE;
+                xhead->length = sizeof(XMSET);
+                conn->push_chunk(conn, xhead, sizeof(DBHEAD));    
+                conn->push_chunk(conn, xmsets, xhead->length);    
+            }
+        }
+        else if(status == XM_STATUS_WAIT)
+        {
+            conn->wait_evtimeout(conn, query_wait_time);
+        }
     return ret;
 }
 

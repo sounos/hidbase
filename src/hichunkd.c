@@ -898,12 +898,14 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                     resp.status = DBASE_STATUS_ERR;
                     switch(xhead->cmd)
                     {
+                        case DBASE_REQ_GET://for HTTP GET
                         case DBASE_REQ_FIND:
                             if((resp.size = xdbase_get_data_len(xdb, diskid, xhead->id)) > 0)
                             {
                                 resp.status = DBASE_STATUS_OK;
                             }
                             break;
+                        case DBASE_REQ_SET://for HTTP PUT
                         case DBASE_REQ_REQUIRE:
                             if((resp.size = xdbase_get_data_len(xdb, diskid, xhead->id)) > 0
                                     || xdbase_check_disk(xdb, diskid, xhead->id, xhead->size) == 0)
