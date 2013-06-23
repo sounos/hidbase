@@ -16,6 +16,7 @@
 typedef struct _XMHOST
 {
     int ip;
+    int diskid;
     short port;
     short gid;
 }XMHOST;
@@ -23,7 +24,6 @@ typedef struct _XMSETS
 {
     XMHOST lists[XM_HOST_MAX];
 }XMSETS;
-typedef XMDISKLIST uint32_t[XM_HOST_MAX];
 typedef struct _XMMETA
 {
     short    status;
@@ -88,11 +88,13 @@ typedef struct _XMAP
 /* initialize XMAP */
 XMAP *xmap_init(char *basedir);
 /* query id */
-int xmap_qid(XMAP *xmap, int64_t id, int *status, XMHOST *xhost);
+int xmap_qid(XMAP *xmap, int64_t id, int *status, XMSETS *sets, int *nsets);
 /* status */
-int xmap_check(XMAP *xmap, int qid, XMHOST *xhost);
+int xmap_check_meta(XMAP *xmap, int qid, XMSETS *sets);
+/* reset */
+int xmap_reset_meta(XMAP *xmap, int qid);
 /* query over */
-int xmap_over(XMAP *xmap, int qid, XMHOST *xhost);
+int xmap_over_meta(XMAP *xmap, int qid, int diskid);
 /* return diskid */
 int xmap_set_disk(XMAP *xmap, MDISK *disk);
 /* set groupid */

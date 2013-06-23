@@ -68,6 +68,7 @@ static int group_conns_limit = 16;
 static char *public_multicast = "233.8.8.8";
 static int public_multicast_limit = 8;
 static int public_groupid = 0;
+int traced_request_handler(CONN *conn, DBHEAD *xhead);
 /* httpd packet reader */
 int httpd_packet_reader(CONN *conn, CB_DATA *buffer)
 {
@@ -140,7 +141,6 @@ int hex2long(char *hex, int64_t *key)
 /*request handler */
 int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
 {
-    CONN *xconn = NULL;
     DBHEAD xhead = {0};
     char *s = NULL, *p = NULL;
     int ret = -1, k = 0, gid = 0;
@@ -375,45 +375,55 @@ int httpd_oob_handler(CONN *conn, CB_DATA *oob)
 }
 
 /* check host groupid */
-int traced_check_disk_groupid(char *ip, int port)
+void traced_update_metainfo(DBHEAD *xhead, char *ip, int port, int *gid, int *total)
 {
-    int gid = -1, diskid = 0;
     SESSION session = {0};
+    int diskid = 0;
 
-    if((diskid = xmap_diskid(xmap, ip, port, &gid)) > 0 && gid == XM_NO_GROUPID)
+    if((diskid = xmap_diskid(xmap, ip, port, gid)) > 0)
     {
-        memcpy(&session, &(traced->session), sizeof(SESSION));
-        session.flags |= SB_NONBLOCK;
-        gid = traced->addgroup(traced, ip, port, group_conns_limit, &session);
-        xmap_set_groupid(xmap, diskid, gid);
+        if(*gid == XM_NO_GROUPID)
+        {
+            memcpy(&session, &(traced->session), sizeof(SESSION));
+            session.flags |= SB_NONBLOCK;
+            *gid = traced->addgroup(traced, ip, port, group_conns_limit, &session);
+            xmap_set_groupid(xmap, diskid, *gid);
+        }
+        *total = xmap_over_meta(xmap, xhead->qid, diskid);
     }
-    return gid;
+    return ;
 }
 
 /* handling request */
 int traced_request_handler(CONN *conn, DBHEAD *xhead)
 {
-    int ret = -1, status = 0, k = 0, qid = 0, gid = 0, n = 0;
+    int ret = -1, status = 0, k = 0, qid = 0, 
+        gid = 0, port = 0, n = 0, i = 0;
+    unsigned char *p = NULL;
     CONN *xconn = NULL;
-    XMSETS xsets = {0};
+    XMSETS xsets;
+    char ip[16];
 
-    if(conn && xhead && (qid = xmap_qid(xmap, xhead.id, &status, &xsets, &n))> 0)
+    if(conn && xhead && (qid = xmap_qid(xmap, xhead->id, &status, &xsets, &n))> 0)
     {
+        xhead->qid = qid;
         if(n < 1 && status == XM_STATUS_FREE)
         {
             k = DBKMASK(xhead->id);
             gid = multicasts[k].groupid;
             if((xconn = multicastd->getconn(multicastd, gid))) 
             {
-                ACCESS_LOGGER(logger, "SEND_REQUIRE{key:%llu length:%d group[%d][%s:%d fd:%d]} from %s:%d ",(uint64_t)(xhead.id), xhead.size, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
+                ACCESS_LOGGER(logger, "SEND_REQUIRE{key:%llu length:%d group[%d][%s:%d fd:%d]} from %s:%d ",(uint64_t)(xhead->id), xhead->size, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
                 xhead->index = conn->index;
+                xhead->qid = qid;
                 xconn->push_chunk(xconn, xhead, sizeof(DBHEAD));
                 xconn->over(xconn);
+                ret = 0;
             }
             else
             {
-                ACCESS_LOGGER(logger, "NO_CONN{key:%llu length:%d group[%d] from %s:%d}", (uint64_t)(xhead.id), xhead.size, k, conn->remote_ip, conn->remote_port);
-                xmap_over(xmap, qid, NULL);
+                ACCESS_LOGGER(logger, "NO_CONN{key:%llu length:%d group[%d] from %s:%d}", (uint64_t)(xhead->id), xhead->size, k, conn->remote_ip, conn->remote_port);
+                xmap_reset_meta(xmap, qid);
             }
         }
         else if(n > 0 && status == XM_STATUS_FREE)
@@ -423,19 +433,26 @@ int traced_request_handler(CONN *conn, DBHEAD *xhead)
                 for(i = 0; i < n; i++)
                 {
                     gid = xsets.lists[i].gid;
+                    port = xsets.lists[i].port;
+                    p = (unsigned char *)&(xsets.lists[i].ip);
+                    sprintf(ip, "%u.%u.%u.%u", p[0], p[1], p[2], p[3]);
                     if(!(xconn = traced->getconn(traced, gid)))
-                        xconn = traced->newconn(traced, -1, -1, xsets.lists[i].ip, xsets.lists[i].port, NULL);
+                        xconn = traced->newconn(traced, -1, -1, ip, port, NULL);
                     if(xconn)
                     {
-                        if(resp->cid > 0)
+                        xconn->xids64[0] = xhead->id;
+                        xconn->xids[0] = xhead->cmd;
+                        xconn->xids[1] = xhead->qid;
+                        xconn->xids[2] = xhead->cid;
+                        if(xhead->cid > 0)
                         {
-                            xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
-                            traced->newtransaction(traced, xconn, xhead.cmd);
+                            xconn->save_cache(xconn, xhead, sizeof(DBHEAD));
+                            traced->newtransaction(traced, xconn, xhead->cmd);
                         }
                         else
                         {
-                            ACCESS_LOGGER(logger, "READY_GET{cmd:%d key:%llu cid:%d size:%d} on %s:%d", xhead.cmd, (uint64_t)xhead.id, xhead.cid, xhead.size, conn->remote_ip, resp->port);
-                            xconn->push_chunk(conn, &xhead, sizeof(DBHEAD));
+                            ACCESS_LOGGER(logger, "READY_GET{cmd:%d key:%llu cid:%d size:%d} on %s:%d", xhead->cmd, (uint64_t)xhead->id, xhead->cid, xhead->size, ip, port);
+                            xconn->push_chunk(conn, xhead, sizeof(DBHEAD));
 
                         }
                         ret = 0;
@@ -443,33 +460,34 @@ int traced_request_handler(CONN *conn, DBHEAD *xhead)
                     }
                     else
                     {
+                        //queue retry
                         ACCESS_LOGGER(logger, "NO_FREE_CONN[%s:%d]{key:%llu cid:%d}",
-                                conn->remote_ip, resp->port, (uint64_t)resp->id, resp->cid);
+                                ip, port, (uint64_t)xhead->id, xhead->cid);
                     }
                 }
             }
             else 
             {
                 xhead->cmd |= DBASE_CMD_BASE;
-                xhead->length = sizeof(XMSET);
+                xhead->length = sizeof(XMSETS);
                 conn->push_chunk(conn, xhead, sizeof(DBHEAD));    
-                conn->push_chunk(conn, xmsets, xhead->length);    
+                conn->push_chunk(conn, &xsets, xhead->length);    
             }
         }
         else if(status == XM_STATUS_WAIT)
         {
+            //queue wait
             conn->wait_evtimeout(conn, query_wait_time);
         }
+    }
     return ret;
 }
 
 /* trackerd packet handler */
 int trackerd_packet_handler(CONN *conn, CB_DATA *packet)
 {
-    int ret = -1, status = 0, qid = 0, gid = 0;
     DBHEAD *xhead = NULL;
-    CONN *xconn = NULL;
-    XMHOST xhost = {0};
+    int ret = -1;
 
     if(conn && packet && (xhead = (DBHEAD *)packet->data))
     {
@@ -480,7 +498,7 @@ int trackerd_packet_handler(CONN *conn, CB_DATA *packet)
         }
         else
         {
-            traced_request_handler(conn, xhead);
+            ret = traced_request_handler(conn, xhead);
         }
     }
     return ret;
@@ -496,7 +514,7 @@ int trackerd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *
     {
         xhead->cid = xmap_cache(xmap, chunk->data, chunk->ndata);
         xhead->size = chunk->ndata;
-        traced_request_handler(conn, xhead);
+        ret = traced_request_handler(conn, xhead);
     }
     return ret;
 }
@@ -528,16 +546,19 @@ int trackerd_timeout_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DAT
 int trackerd_evtimeout_handler(CONN *conn)
 {
     DBHEAD *xhead = NULL;
-    XMHOST xhost = {0};
+    XMSETS xsets;
 
     if(conn && (xhead = (DBHEAD *)(conn->packet.data)))
     {
-        if(xmap_check(xmap, xhead->qid, &xhost) > 0)
+        if(xmap_check_meta(xmap, xhead->qid, &xsets) > 0)
         {
-            xhead->ip = xhost.ip;
-            xhead->port = xhost.port;
+            //xhead->ip = xhost.ip;
+            //xhead->port = xhost.port;
             xhead->cmd |= DBASE_CMD_BASE;
-            return conn->push_chunk(conn, xhead, sizeof(DBHEAD));
+            xhead->length = sizeof(XMSETS);
+            conn->push_chunk(conn, xhead, sizeof(DBHEAD));
+            conn->push_chunk(conn, &xsets, xhead->length);
+            return 0;
         }
         else
         {
@@ -690,38 +711,36 @@ int traced_oob_handler(CONN *conn, CB_DATA *oob)
 int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
 {
     DBHEAD *resp = NULL, xhead = {0};
-    int ret = -1, gid = 0;
+    int ret = -1, gid = 0, total = 0;
     CONN *xconn = NULL;
     //XMHOST xhost = {0};
 
     if(conn && packet && (resp = (DBHEAD *)packet->data) 
             && resp->status == DBASE_STATUS_OK)
     {
-        gid = traced_check_disk_groupid(conn->remote_ip, resp->port);
+        traced_update_metainfo(resp, conn->remote_ip, resp->port, &gid, &total);
         ACCESS_LOGGER(logger, "Found{cmd:%d key:%llu cid:%d size:%d} on %s:%d", resp->cmd, (uint64_t)resp->id, resp->cid, resp->size, conn->remote_ip, resp->port);
+        //check task over
         memcpy(&xhead, resp, sizeof(DBHEAD));
         xhead.cmd = 0;
         switch(resp->cmd)
         {
-            case DBASE_RESP_FIND:
+            case DBASE_RESP_GET:
                 if(resp->size > 0)
                 {
-                    //xhost.ip = resp->ip;
-                    //xhost.port = resp->port;
-                    //ret = xmap_over(xmap, resp->qid, &xhost);
                     xhead.cmd = DBASE_REQ_GET;
                     xhead.length = 0;
                     xhead.size = 0;
                     xhead.cid = 0;
                 }
                 break;
-            case DBASE_RESP_REQUIRE
-                xhead.cmd = DBASE_REQ_SET;
-                //xhead.size = 0;
+            case DBASE_RESP_SET:
+                xhead.size = 0;
                 break;
         }
         //fprintf(stdout, "%s::%d cmd:%d|%d/%d/%d/%d\r\n", __FILE__, __LINE__, resp->cmd, DBASE_RESP_REQUIRE, xhead.cmd, DBASE_REQ_SET, DBASE_REQ_GET);
-        if(xhead.cmd)
+        if((xhead.cmd == DBASE_REQ_GET && total > 1)//check first request 
+            || xhead.cmd == DBASE_REQ_SET)
         {
             if(!(xconn = traced->getconn(traced, gid)))
                 xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, NULL);
