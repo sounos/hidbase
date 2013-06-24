@@ -768,7 +768,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
             && resp->status == DBASE_STATUS_OK)
     {
         traced_update_metainfo(resp, conn->remote_ip, resp->port, &gid, &total);
-        ACCESS_LOGGER(logger, "Found{cmd:%d key:%llu cid:%d size:%d} on %s:%d", resp->cmd, (uint64_t)resp->id, resp->cid, resp->size, conn->remote_ip, resp->port);
+        ACCESS_LOGGER(logger, "Found{cmd:%d key:%llu gid:%d cid:%d size:%d} on %s:%d", resp->cmd, (uint64_t)resp->id, gid, resp->cid, resp->size, conn->remote_ip, resp->port);
         //check task over
         memcpy(&xhead, resp, sizeof(DBHEAD));
         xhead.cmd = 0;
@@ -784,11 +784,12 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                 }
                 break;
             case DBASE_RESP_SET:
+                xhead.cmd = DBASE_REQ_SET;
                 xhead.size = 0;
                 break;
         }
         //fprintf(stdout, "%s::%d cmd:%d|%d/%d/%d/%d\r\n", __FILE__, __LINE__, resp->cmd, DBASE_RESP_REQUIRE, xhead.cmd, DBASE_REQ_SET, DBASE_REQ_GET);
-        if((xhead.cmd == DBASE_REQ_GET && total > 1)//check first request 
+        if((xhead.cmd == DBASE_REQ_GET && total == 1)//check first request 
             || xhead.cmd == DBASE_REQ_SET)
         {
             if(!(xconn = traced->getconn(traced, gid)))
@@ -797,6 +798,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
             {
                 if(resp->cid > 0)
                 {
+                    ACCESS_LOGGER(logger, "READY_PUT{cmd:%d key:%llu cid:%d size:%d} on %s:%d", xhead.cmd, (uint64_t)xhead.id, xhead.cid, xhead.size, conn->remote_ip, resp->port);
                     xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
                     traced->newtransaction(traced, xconn, xhead.cmd);
                 }

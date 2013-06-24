@@ -197,7 +197,7 @@ int xmap_kid(XMAP *xmap, int64_t key)
     if(xmap && key) 
     {
         MUTEX_LOCK(xmap->mutex); 
-        k = (key % DBASE_MASK);
+        k = DBKMASK(key);
         if((root = xmap->state->masks[k].root) > 0)
         {
             x = xmap->state->id_max + 1;
