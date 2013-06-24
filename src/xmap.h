@@ -90,7 +90,7 @@ XMAP *xmap_init(char *basedir);
 /* query id */
 int xmap_qid(XMAP *xmap, int64_t id, int *status, XMSETS *sets, int *nsets);
 /* status */
-int xmap_check_meta(XMAP *xmap, int qid, XMSETS *sets);
+int xmap_check_meta(XMAP *xmap, int qid, int *status, XMSETS *sets);
 /* reset */
 int xmap_reset_meta(XMAP *xmap, int qid);
 /* query over */

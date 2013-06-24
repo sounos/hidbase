@@ -269,7 +269,7 @@ int xmap_qid(XMAP *xmap, int64_t key, int *status, XMSETS *xsets, int *num)
 }
 
 /* check meta */
-int xmap_check_meta(XMAP *xmap, int qid, XMSETS *xsets)
+int xmap_check_meta(XMAP *xmap, int qid, int *status, XMSETS *xsets)
 {
     int ret = -1, n = 0, k = 0;
 
@@ -278,6 +278,7 @@ int xmap_check_meta(XMAP *xmap, int qid, XMSETS *xsets)
         MUTEX_LOCK(xmap->mutex);  
         if(qid <= xmap->state->id_max && (ret = n = xmap->metas[qid].count) > 0)
         {
+            *status = xmap->metas[qid].status;
             while(--n >= 0)
             {
                 if((k = xmap->metas[qid].disks[n]) > 0 && k <= xmap->state->disk_id_max)
