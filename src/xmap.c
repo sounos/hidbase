@@ -235,6 +235,7 @@ int xmap_qid(XMAP *xmap, int64_t key, int *status, XMSETS *xsets, int *num)
         MUTEX_LOCK(xmap->mutex);  
         if(xmap->metas[qid].modtime < xmap->start_time) 
         {
+            *status = XM_STATUS_FREE;
             *num = xmap->metas[qid].count = 0;
             xmap->metas[qid].modtime = 0;
             xmap->metas[qid].status = XM_STATUS_WAIT;
@@ -242,11 +243,13 @@ int xmap_qid(XMAP *xmap, int64_t key, int *status, XMSETS *xsets, int *num)
         }
         else
         {
-            if((*num = n = xmap->metas[qid].count) > 0)
+            if(xmap->metas[qid].status == XM_STATUS_FREE)
             {
+                *num = n = xmap->metas[qid].count;
                 while(--n >= 0)
                 {
-                    if((k = xmap->metas[qid].disks[n]) > 0 && k <= xmap->state->disk_id_max)
+                    if((k = xmap->metas[qid].disks[n]) > 0
+                            && k <= xmap->state->disk_id_max)
                     {
                         xsets->lists[n].ip = xmap->disks[k].ip;
                         xsets->lists[n].port = xmap->disks[k].port; 
@@ -254,14 +257,8 @@ int xmap_qid(XMAP *xmap, int64_t key, int *status, XMSETS *xsets, int *num)
                         xsets->lists[n].diskid = k;
                     }
                 }
-                *status = xmap->metas[qid].status;
             }
-            else
-            {
-                xmap->metas[qid].status = XM_STATUS_WAIT;
-                xmap->metas[qid].modtime = 0;
-                memset(xmap->metas[qid].disks, 0, sizeof(uint32_t) * XM_HOST_MAX);
-            }
+            *status = xmap->metas[qid].status;
         }
         MUTEX_UNLOCK(xmap->mutex);
     }
@@ -312,27 +309,22 @@ int xmap_reset_meta(XMAP *xmap, int qid)
 }
 
 /* query over meta */
-int xmap_over_meta(XMAP *xmap, int qid, int diskid)
+int xmap_over_meta(XMAP *xmap, int qid, int diskid, int *status)
 {
     int ret = -1, k = 0;
 
-    if(xmap && qid > 0 && diskid > 0)
+    if(xmap && qid > 0 && diskid > 0 && status)
     {
         MUTEX_LOCK(xmap->mutex);
         if(qid <= xmap->state->id_max)
         {
-            if(xmap->metas[qid].status == XM_STATUS_WAIT)
-            {
-                xmap->metas[qid].count = 0;
-                xmap->metas[qid].status = XM_STATUS_FREE;
-            }
-            k = xmap->metas[qid].count;
-            if(k < XM_HOST_MAX)
+            if((k = xmap->metas[qid].count) < XM_HOST_MAX)
             {
                 xmap->metas[qid].disks[k] = diskid;
-                xmap->metas[qid].count++;
+                ret = ++(xmap->metas[qid].count);
+                if(ret == XM_HOST_MAX) xmap->metas[qid].status = XM_STATUS_FREE;
+                *status = xmap->metas[qid].status;
             }
-            ret = xmap->metas[qid].count;
         }
         MUTEX_UNLOCK(xmap->mutex);
     }

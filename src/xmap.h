@@ -94,7 +94,7 @@ int xmap_check_meta(XMAP *xmap, int qid, int *status, XMSETS *sets);
 /* reset */
 int xmap_reset_meta(XMAP *xmap, int qid);
 /* query over */
-int xmap_over_meta(XMAP *xmap, int qid, int diskid);
+int xmap_over_meta(XMAP *xmap, int qid, int diskid, int *status);
 /* return diskid */
 int xmap_set_disk(XMAP *xmap, MDISK *disk);
 /* set groupid */
