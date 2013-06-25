@@ -15,7 +15,7 @@
 #include "logger.h"
 #include "mutex.h"
 #include "mtrie.h"
-#include "db.h"
+#include "cdb.h"
 #include "mmqueue.h"
 #include "mmtrie.h"
 #include "mmtree.h"
@@ -116,7 +116,7 @@ XMAP *xmap_init(char *basedir)
         xmap->queue = mmqueue_init(path);
         /* db */
         sprintf(path, "%s/%s", basedir, "db/");
-        xmap->db = db_init(path, DB_USE_MMAP);
+        xmap->db = cdb_init(path, CDB_USE_MMAP);
         /* state */
         sprintf(path, "%s/%s", basedir, "xmap.state");
         if((xmap->stateio.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
@@ -185,7 +185,7 @@ XMAP *xmap_init(char *basedir)
             mmtree_remove(xmap->tree, xmap->state->qwait, id, NULL, NULL);
             mmqueue_push(xmap->queue, xmap->state->qleft, k);
         }
-        //db_destroy(xmap->db);
+        cdb_destroy(xmap->db);
     }
     return xmap;
 }
@@ -444,7 +444,7 @@ int xmap_cache(XMAP *xmap, char *data, int ndata)
         MUTEX_LOCK(xmap->cmutex);
         if(mmqueue_pop(xmap->queue, xmap->state->qleft, &id) < 0)
             id = ++(xmap->state->id_wait);
-        db_set_data(xmap->db, id, data, ndata);
+        cdb_set_data(xmap->db, id, data, ndata);
         mmtree_try_insert(xmap->tree, xmap->state->qwait, id, id, NULL);
         MUTEX_UNLOCK(xmap->cmutex);
     }
@@ -458,7 +458,7 @@ int xmap_cache_len(XMAP *xmap, int id)
 
     if(xmap && id)
     {
-        ret = db_get_data_len(xmap->db, id);
+        ret = cdb_get_data_len(xmap->db, id);
         //FATAL_LOGGER(xmap->logger, "get_data_len(%d) => %d", id, ret);
     }
     return ret;
@@ -471,7 +471,7 @@ int xmap_read_cache(XMAP *xmap, int id, char *data)
 
     if(xmap && id && data)
     {
-        ret = db_read_data(xmap->db, id, data);
+        ret = cdb_read_data(xmap->db, id, data);
     }
     return ret;
 }
@@ -490,7 +490,7 @@ int xmap_drop_cache(XMAP *xmap, int id)
             mmtree_remove(xmap->tree, xmap->state->qwait, oid, NULL, NULL);
             mmqueue_push(xmap->queue, xmap->state->qleft, id);
         }
-        ret = db_del_data(xmap->db, id);
+        ret = cdb_del_data(xmap->db, id);
         //FATAL_LOGGER(xmap->logger, "del_data(%d) => %d", id, ret);
     }
     return ret;
@@ -506,8 +506,8 @@ void xmap_clean(XMAP *xmap)
         mmqueue_clean(xmap->queue);
         mmtrie_clean(xmap->kmap);
         mtrie_clean(xmap->mtrie);
-        db_reset(xmap->db);
-        db_clean(xmap->db);
+        cdb_reset(xmap->db);
+        cdb_clean(xmap->db);
         if(xmap->diskio.map) 
         {
             munmap(xmap->diskio.map, xmap->diskio.size);
