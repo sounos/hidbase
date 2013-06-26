@@ -62,7 +62,7 @@ typedef struct _DBHEAD
     ushort          index;
     ushort          port;
     int             cid;
-    int             bits;
+    int             ssize;/* source size */
     int             qid;
     int             ip;
     int             size;
