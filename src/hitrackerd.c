@@ -739,11 +739,14 @@ int traced_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *ch
 /* error handler */
 int traced_error_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chunk)
 {
+    DBHEAD *xhead = NULL;
     int ret = -1;
 
-    if(conn && packet)
+    if(conn && cache && (xhead = (DBHEAD *)cache->data)
+        && (xhead->cmd == DBASE_REQ_GET || xhead->cmd == DBASE_REQ_SET))
     {
-
+        httpd_error_handler(xhead->index, xhead->id);
+        ret = 0;
     }
     return ret;
 }
@@ -790,7 +793,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
     int ret = -1, gid = 0, total = 0, status = -1;
     DBHEAD *resp = NULL, xhead = {0};
     CONN *xconn = NULL;
-    //XMHOST xhost = {0};
+    SESSION sess = {0};
 
     if(conn && packet && (resp = (DBHEAD *)packet->data) 
             && resp->status == DBASE_STATUS_OK)
@@ -826,7 +829,9 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
             }
             else
             {
-                xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, NULL);
+                memcpy(&sess, &traced->session, sizeof(SESSION));
+                sess.ok_handler = traced_req_handler;
+                xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, &sess);
                 if(xconn)
                 {
                     xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
@@ -838,7 +843,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                     {
                         ACCESS_LOGGER(logger, "READY_GET{cmd:%d qid:%d key:%llu size:%d} on %s:%d", xhead.cmd, xhead.qid, (uint64_t)xhead.id, xhead.size, conn->remote_ip, resp->port);
                     }
-                    traced->newtransaction(traced, xconn, xhead.cmd);
+                    //traced->newtransaction(traced, xconn, xhead.cmd);
                     ret = 0;
                 }
                 else
