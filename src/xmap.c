@@ -15,7 +15,6 @@
 #include "logger.h"
 #include "mutex.h"
 #include "mtrie.h"
-#include "cdb.h"
 #include "mmqueue.h"
 #include "mmtrie.h"
 #include "mmtree.h"
@@ -115,8 +114,8 @@ XMAP *xmap_init(char *basedir)
         sprintf(path, "%s/%s", basedir, "xmap.queue");
         xmap->queue = mmqueue_init(path);
         /* db */
-        sprintf(path, "%s/%s", basedir, "db/");
-        xmap->db = cdb_init(path, CDB_USE_MMAP);
+        //sprintf(path, "%s/%s", basedir, "db/");
+        //xmap->db = cdb_init(path, CDB_USE_MMAP);
         /* state */
         sprintf(path, "%s/%s", basedir, "xmap.state");
         if((xmap->stateio.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
@@ -185,7 +184,7 @@ XMAP *xmap_init(char *basedir)
             mmtree_remove(xmap->tree, xmap->state->qwait, id, NULL, NULL);
             mmqueue_push(xmap->queue, xmap->state->qleft, k);
         }
-        cdb_destroy(xmap->db);
+        //cdb_destroy(xmap->db);
     }
     return xmap;
 }
@@ -397,6 +396,7 @@ int xmap_set_groupid(XMAP *xmap, int diskid, int groupid)
     {
         MUTEX_LOCK(xmap->mutex);
         ret = xmap->disks[diskid].groupid = groupid;
+        xmap->disks[diskid].last = time(NULL);
         MUTEX_UNLOCK(xmap->mutex);
     }
     return ret;
@@ -420,13 +420,19 @@ int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
             xmap->disks[id].port = port;
             xmap->disks[id].groupid = -1;
             *groupid = XM_NO_GROUPID;
+            xmap->disks[ret].last = time(NULL);
         }
         else
         {
-            if(ret > 0 && ret <= xmap->state->disk_id_max 
-                    && xmap->disks[ret].groupid > 0)
+            if(ret > 0 && ret <= xmap->state->disk_id_max) 
             {
-                *groupid = xmap->disks[ret].groupid; 
+                if(xmap->start_time > xmap->disks[ret].last)
+                {
+                    xmap->disks[ret].last = time(NULL);
+                    xmap->disks[ret].groupid = -1;
+                    *groupid = XM_NO_GROUPID;
+                }
+                if(xmap->disks[ret].groupid > 0) *groupid = xmap->disks[ret].groupid; 
             }
         }
         MUTEX_UNLOCK(xmap->mutex);
@@ -441,12 +447,14 @@ int xmap_cache(XMAP *xmap, char *data, int ndata)
 
     if(xmap && data && ndata > 0)
     {
+        /*
         MUTEX_LOCK(xmap->cmutex);
         if(mmqueue_pop(xmap->queue, xmap->state->qleft, &id) < 0)
             id = ++(xmap->state->id_wait);
         cdb_set_data(xmap->db, id, data, ndata);
         mmtree_try_insert(xmap->tree, xmap->state->qwait, id, id, NULL);
         MUTEX_UNLOCK(xmap->cmutex);
+        */
     }
     return id;
 }
@@ -458,7 +466,7 @@ int xmap_cache_len(XMAP *xmap, int id)
 
     if(xmap && id)
     {
-        ret = cdb_get_data_len(xmap->db, id);
+        //ret = cdb_get_data_len(xmap->db, id);
         //FATAL_LOGGER(xmap->logger, "get_data_len(%d) => %d", id, ret);
     }
     return ret;
@@ -471,7 +479,7 @@ int xmap_read_cache(XMAP *xmap, int id, char *data)
 
     if(xmap && id && data)
     {
-        ret = cdb_read_data(xmap->db, id, data);
+        //ret = cdb_read_data(xmap->db, id, data);
     }
     return ret;
 }
@@ -490,7 +498,7 @@ int xmap_drop_cache(XMAP *xmap, int id)
             mmtree_remove(xmap->tree, xmap->state->qwait, oid, NULL, NULL);
             mmqueue_push(xmap->queue, xmap->state->qleft, id);
         }
-        ret = cdb_del_data(xmap->db, id);
+        //ret = cdb_del_data(xmap->db, id);
         //FATAL_LOGGER(xmap->logger, "del_data(%d) => %d", id, ret);
     }
     return ret;
@@ -506,8 +514,8 @@ void xmap_clean(XMAP *xmap)
         mmqueue_clean(xmap->queue);
         mmtrie_clean(xmap->kmap);
         mtrie_clean(xmap->mtrie);
-        cdb_reset(xmap->db);
-        cdb_clean(xmap->db);
+        //cdb_reset(xmap->db);
+        //cdb_clean(xmap->db);
         if(xmap->diskio.map) 
         {
             munmap(xmap->diskio.map, xmap->diskio.size);

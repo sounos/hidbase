@@ -95,11 +95,11 @@ hichunkd_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 am_hitrackerd_OBJECTS = hitrackerd-hitrackerd.$(OBJEXT) \
 	hitrackerd-iniparser.$(OBJEXT) hitrackerd-xmap.$(OBJEXT) \
 	hitrackerd-http.$(OBJEXT) hitrackerd-mmtrie.$(OBJEXT) \
-	hitrackerd-cdb.$(OBJEXT) hitrackerd-logger.$(OBJEXT) \
-	hitrackerd-mtrie.$(OBJEXT) hitrackerd-stime.$(OBJEXT) \
-	hitrackerd-base64.$(OBJEXT) hitrackerd-iqueue.$(OBJEXT) \
-	hitrackerd-xmm.$(OBJEXT) hitrackerd-mmtree64.$(OBJEXT) \
-	hitrackerd-mmtree.$(OBJEXT) hitrackerd-mmqueue.$(OBJEXT)
+	hitrackerd-logger.$(OBJEXT) hitrackerd-mtrie.$(OBJEXT) \
+	hitrackerd-stime.$(OBJEXT) hitrackerd-base64.$(OBJEXT) \
+	hitrackerd-iqueue.$(OBJEXT) hitrackerd-xmm.$(OBJEXT) \
+	hitrackerd-mmtree64.$(OBJEXT) hitrackerd-mmtree.$(OBJEXT) \
+	hitrackerd-mmqueue.$(OBJEXT)
 hitrackerd_OBJECTS = $(am_hitrackerd_OBJECTS)
 hitrackerd_LDADD = $(LDADD)
 hitrackerd_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
@@ -250,7 +250,7 @@ hichunkd_SOURCES = hichunkd.c xdbase.h xdbase.c iniparser.c iniparser.h base64ch
 hichunkd_CPPFLAGS = -I utils/ -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -Wall
 hichunkd_LDFLAGS = -lz -lsbase
 hitrackerd_SOURCES = hitrackerd.c iniparser.c iniparser.h base64trackerdhtml.h xmap.h xmap.c \
-				 utils/http.h utils/http.c utils/mmtrie.h utils/mmtrie.c utils/cdb.c utils/cdb.h \
+				 utils/http.h utils/http.c utils/mmtrie.h utils/mmtrie.c \
 				 utils/logger.h utils/logger.c utils/mutex.h utils/mtrie.h utils/mtrie.c \
 				 utils/stime.h utils/stime.c utils/base64.h utils/base64.c \
 				utils/iqueue.h utils/iqueue.c utils/xmm.h utils/xmm.c \
@@ -400,7 +400,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hichunkd-xdbase.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hichunkd-xmm.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-base64.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-cdb.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-hitrackerd.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-http.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-iniparser.Po@am__quote@
@@ -753,20 +752,6 @@ hitrackerd-mmtrie.obj: utils/mmtrie.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/mmtrie.c' object='hitrackerd-mmtrie.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o hitrackerd-mmtrie.obj `if test -f 'utils/mmtrie.c'; then $(CYGPATH_W) 'utils/mmtrie.c'; else $(CYGPATH_W) '$(srcdir)/utils/mmtrie.c'; fi`
-
-hitrackerd-cdb.o: utils/cdb.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT hitrackerd-cdb.o -MD -MP -MF $(DEPDIR)/hitrackerd-cdb.Tpo -c -o hitrackerd-cdb.o `test -f 'utils/cdb.c' || echo '$(srcdir)/'`utils/cdb.c
-@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/hitrackerd-cdb.Tpo $(DEPDIR)/hitrackerd-cdb.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/cdb.c' object='hitrackerd-cdb.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o hitrackerd-cdb.o `test -f 'utils/cdb.c' || echo '$(srcdir)/'`utils/cdb.c
-
-hitrackerd-cdb.obj: utils/cdb.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT hitrackerd-cdb.obj -MD -MP -MF $(DEPDIR)/hitrackerd-cdb.Tpo -c -o hitrackerd-cdb.obj `if test -f 'utils/cdb.c'; then $(CYGPATH_W) 'utils/cdb.c'; else $(CYGPATH_W) '$(srcdir)/utils/cdb.c'; fi`
-@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/hitrackerd-cdb.Tpo $(DEPDIR)/hitrackerd-cdb.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/cdb.c' object='hitrackerd-cdb.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o hitrackerd-cdb.obj `if test -f 'utils/cdb.c'; then $(CYGPATH_W) 'utils/cdb.c'; else $(CYGPATH_W) '$(srcdir)/utils/cdb.c'; fi`
 
 hitrackerd-logger.o: utils/logger.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT hitrackerd-logger.o -MD -MP -MF $(DEPDIR)/hitrackerd-logger.Tpo -c -o hitrackerd-logger.o `test -f 'utils/logger.c' || echo '$(srcdir)/'`utils/logger.c

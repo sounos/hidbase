@@ -40,6 +40,7 @@ typedef struct _XMDISK
     uint32_t total;
     uint64_t limit;
     uint64_t free;
+    time_t   last;
 }XMDISK;
 typedef struct _XMASK
 {

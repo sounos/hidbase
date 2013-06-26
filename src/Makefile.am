@@ -15,7 +15,7 @@ hichunkd_CPPFLAGS = -I utils/ -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -Wall
 hichunkd_LDFLAGS = -lz -lsbase
 
 hitrackerd_SOURCES = hitrackerd.c iniparser.c iniparser.h base64trackerdhtml.h xmap.h xmap.c \
-				 utils/http.h utils/http.c utils/mmtrie.h utils/mmtrie.c utils/cdb.c utils/cdb.h \
+				 utils/http.h utils/http.c utils/mmtrie.h utils/mmtrie.c \
 				 utils/logger.h utils/logger.c utils/mutex.h utils/mtrie.h utils/mtrie.c \
 				 utils/stime.h utils/stime.c utils/base64.h utils/base64.c \
 				utils/iqueue.h utils/iqueue.c utils/xmm.h utils/xmm.c \

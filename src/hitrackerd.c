@@ -176,6 +176,7 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
         }
         if(data && ndata > 0)
         {
+            conn->setto_chunk2(conn);
             xhead.ssize = ndata;
             xhead.size = ndata;
             conn->xids[2] = XM_HOST_MAX;
@@ -209,6 +210,7 @@ void httpd_over_handler(int index, int64_t key)
         && --(conn->xids[2]) == 0)
     {
         ACCESS_LOGGER(logger, "over key:%llu", LLU(conn->xids64[0]));
+        conn->reset_chunk2(conn);
         conn->push_chunk(conn, HTTP_RESP_CONTINUE, strlen(HTTP_RESP_CONTINUE));
         if(!conn->xids[1])conn->over(conn);
     }
@@ -650,31 +652,44 @@ int trackerd_oob_handler(CONN *conn, CB_DATA *oob)
     return -1;
 }
 
-/* trasaction handler */
-int traced_trans_handler(CONN *conn, int id)
+/* req handler */
+int traced_req_handler(CONN *conn)
 {
     CB_DATA *chunk = NULL;
     DBHEAD *xhead = NULL;
     CONN *xconn = NULL;
 
-
     if(conn && conn->cache.ndata > 0 && (xhead = (DBHEAD *)(conn->cache.data)))
     {
-        if(xhead->ssize > 0 && (xconn = httpd->findconn(httpd, xhead->index)))
+        if(xhead->ssize > 0)
         { 
-            chunk = (CB_DATA*)&(xconn->chunk);
-            xhead->length = chunk->ndata; 
-            conn->push_chunk(conn, &xhead, sizeof(DBHEAD));
-            conn->send_chunk(conn, chunk, xhead->length);
-            ACCESS_LOGGER(logger, "REQ{key:%llu length:%d} on %s:%d", (uint64_t)xhead->id, xhead->length, conn->remote_ip, conn->remote_port);
-            chunk = NULL;
+            if((xconn = httpd->findconn(httpd, xhead->index)))
+            {
+                chunk = (CB_DATA*)&(xconn->chunk2);
+                xhead->length = chunk->ndata; 
+                conn->push_chunk(conn, xhead, sizeof(DBHEAD));
+                conn->relay_chunk(conn, chunk, xhead->length);
+                ACCESS_LOGGER(logger, "REQ{cmd:%d key:%llu length:%d/%d} on %s:%d via %d", xhead->cmd, (uint64_t)xhead->id, chunk->ndata, xhead->ssize, conn->remote_ip, conn->remote_port, conn->fd);
+                chunk = NULL;
+            }
         }
         else
         {
-            ACCESS_LOGGER(logger, "NEW_CHUNK_FAIL{key:%llu length:%d} on %s:%d", (uint64_t)xhead->id,xhead->length, conn->remote_ip, conn->remote_port);
+            conn->push_chunk(conn, xhead, sizeof(DBHEAD));
         }
     }
     return -1;
+}
+
+/* trans handler */
+int traced_trans_handler(CONN *conn, int tid)
+{
+    int ret = -1;
+    if(conn && tid > 0)
+    {
+        ret = traced_req_handler(conn);
+    }
+    return ret;
 }
 
 /* traced packet handler */
@@ -685,7 +700,7 @@ int traced_packet_handler(CONN *conn, CB_DATA *packet)
 
     if(conn && packet && (xhead = (DBHEAD *)packet->data))
     {
-        ACCESS_LOGGER(logger, "RESP{key:%llu} on %s:%d", (uint64_t)xhead->id, conn->remote_ip, conn->remote_port);
+        ACCESS_LOGGER(logger, "RESP{key:%llu} on %s:%d via %d", (uint64_t)xhead->id, conn->remote_ip, conn->remote_port, conn->fd);
         switch(xhead->cmd)
         {
             case DBASE_RESP_SET:
@@ -804,28 +819,35 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
         if((xhead.cmd == DBASE_REQ_GET && total == 1)//check first request 
             || xhead.cmd == DBASE_REQ_SET)
         {
-            if(!(xconn = traced->getconn(traced, gid)))
-                xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, NULL);
-            if(xconn)
+            if((xconn = traced->getconn(traced, gid)))
             {
-                if(resp->ssize > 0)
-                {
-                    ACCESS_LOGGER(logger, "READY_PUT{cmd:%d qid:%d key:%llu size:%d} on %s:%d", xhead.cmd, xhead.qid, (uint64_t)xhead.id, xhead.size, conn->remote_ip, resp->port);
-                    xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
-                    traced->newtransaction(traced, xconn, xhead.cmd);
-                }
-                else
-                {
-                    ACCESS_LOGGER(logger, "READY_GET{cmd:%d qid:%d key:%llu size:%d} on %s:%d", xhead.cmd, xhead.qid, (uint64_t)xhead.id, xhead.size, conn->remote_ip, resp->port);
-                    xconn->push_chunk(xconn, &xhead, sizeof(DBHEAD));
-
-                }
-                ret = 0;
+                xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
+                ret = traced_req_handler(xconn);
             }
             else
             {
-                ACCESS_LOGGER(logger, "NO_FREE_CONN[%s:%d]{key:%llu qid:%d}", 
-                        conn->remote_ip, resp->port, (uint64_t)resp->id, resp->qid);
+                xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, NULL);
+                if(xconn)
+                {
+                    xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
+                    if(resp->ssize > 0)
+                    {
+                        ACCESS_LOGGER(logger, "READY_PUT{cmd:%d qid:%d key:%llu size:%d} on %s:%d", xhead.cmd, xhead.qid, (uint64_t)xhead.id, xhead.size, conn->remote_ip, resp->port);
+                    }
+                    else
+                    {
+                        ACCESS_LOGGER(logger, "READY_GET{cmd:%d qid:%d key:%llu size:%d} on %s:%d", xhead.cmd, xhead.qid, (uint64_t)xhead.id, xhead.size, conn->remote_ip, resp->port);
+                    }
+                    traced->newtransaction(traced, xconn, xhead.cmd);
+                    ret = 0;
+                }
+                else
+                {
+                    ACCESS_LOGGER(logger, "NO_FREE_CONN[%s:%d]{key:%llu qid:%d}", 
+                            conn->remote_ip, resp->port, (uint64_t)resp->id, resp->qid);
+
+                    httpd_error_handler(xhead.index, xhead.id);
+                }
             }
         }
         conn->over_session(conn);
