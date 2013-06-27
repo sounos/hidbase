@@ -68,7 +68,7 @@ static int group_conns_limit = 16;
 static char *public_multicast = "233.8.8.8";
 static int public_multicast_limit = 8;
 static int public_groupid = 0;
-int traced_request_handler(CONN *conn, DBHEAD *xhead);
+int traced_local_handler(CONN *conn, DBHEAD *xhead);
 int traced_try_request(CONN *conn, DBHEAD *xhead, XMSETS *xsets, int num);
 int traced_req_handler(CONN *conn);
 /* httpd packet reader */
@@ -184,7 +184,7 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
         }
         ACCESS_LOGGER(logger, "READY_REQUIRE{%s %s qid:%d key:%llu length:%d group[%d]} from %s:%d ", http_methods[http_req->reqid].e, http_req->path, xhead.qid, (uint64_t)(xhead.id), xhead.ssize, k, conn->remote_ip, conn->remote_port);
         //conn->save_cache(conn, &xhead);
-        ret = traced_request_handler(conn, &xhead);
+        ret = traced_local_handler(conn, &xhead);
     }
     return ret;
 }
@@ -387,7 +387,7 @@ int httpd_evtimeout_handler(CONN *conn)
     DBHEAD *xhead = NULL;
     XMSETS xsets;
 
-    if(conn && (xhead = (DBHEAD *)(conn->cache.data)))
+    if(conn && (xhead = (DBHEAD *)(conn->header.data)))
     {
         if((n = xmap_check_meta(xmap, xhead->qid, &status, &xsets)) > 0
                 && status == XM_STATUS_FREE)
@@ -453,12 +453,15 @@ int traced_try_request(CONN *conn, DBHEAD *xhead, XMSETS *xsets, int num)
 {
     int ret = -1, i = 0, gid = 0, port = 0;
     unsigned char *p = NULL;
-    CONN *xconn = NULL, *oldconn = NULL;
+    CONN *xconn = NULL;
+    SESSION sess = {0};
     char ip[16];
 
-    if(conn && xhead && xsets && num > 0 && (oldconn = httpd->findconn(httpd, xhead->index)) 
+    if(conn && xhead && xsets && num > 0 
         && (xhead->cmd == DBASE_REQ_SET || xhead->cmd == DBASE_REQ_GET))
     {
+        memcpy(&sess, &(traced->session), sizeof(SESSION));
+        sess.ok_handler = traced_req_handler;
         for(i = 0; i < num; i++)
         {
             gid = xsets->lists[i].gid;
@@ -467,14 +470,17 @@ int traced_try_request(CONN *conn, DBHEAD *xhead, XMSETS *xsets, int num)
             sprintf(ip, "%u.%u.%u.%u", p[0], p[1], p[2], p[3]);
             if((xconn = traced->getconn(traced, gid)))
             {
-                xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
+                xconn->wait_estate(xconn);
+                xconn->save_header(xconn, &xhead, sizeof(DBHEAD));
                 ret = traced_req_handler(xconn);
             }
             else
             {
-                xconn = traced->newconn(traced, -1, -1, ip, port, NULL);
+                xconn = traced->newconn(traced, -1, -1, ip, port, &sess);
                 if(xconn)
                 {
+                    xconn->wait_estate(xconn);
+                    xconn->save_header(xconn, &xhead, sizeof(DBHEAD));
                     ret = traced->newtransaction(traced, xconn, xhead->index);
                 }
                 else
@@ -491,7 +497,7 @@ int traced_try_request(CONN *conn, DBHEAD *xhead, XMSETS *xsets, int num)
 }
 
 /* handling request */
-int traced_request_handler(CONN *conn, DBHEAD *xhead)
+int traced_local_handler(CONN *conn, DBHEAD *xhead)
 {
     int ret = -1, status = -1, k = 0, gid = 0, qid = 0, n = 0;
     CONN *xconn = NULL;
@@ -500,7 +506,8 @@ int traced_request_handler(CONN *conn, DBHEAD *xhead)
     if(conn && xhead && (qid = xmap_qid(xmap, xhead->id, &status, &xsets, &n))> 0)
     {
         xhead->qid = qid;
-        conn->save_cache(conn, &xhead, sizeof(DBHEAD));
+        xhead->index = conn->index;
+        conn->save_header(conn, &xhead, sizeof(DBHEAD));
         //fprintf(stdout, "%d:%d\n", qid, status);
         if(status == XM_STATUS_FREE)
         {
@@ -511,8 +518,6 @@ int traced_request_handler(CONN *conn, DBHEAD *xhead)
                 if((xconn = multicastd->getconn(multicastd, gid))) 
                 {
                     ACCESS_LOGGER(logger, "SEND_REQUIRE{qid:%d key:%llu length:%d group[%d][%s:%d fd:%d]} from %s:%d ", qid, (uint64_t)(xhead->id), xhead->size, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
-                    xhead->index = conn->index;
-                    xhead->qid = qid;
                     xconn->push_chunk(xconn, xhead, sizeof(DBHEAD));
                     xconn->over(xconn);
                     ret = 0;
@@ -560,7 +565,7 @@ int trackerd_packet_handler(CONN *conn, CB_DATA *packet)
         }
         else
         {
-            ret = traced_request_handler(conn, xhead);
+            ret = traced_local_handler(conn, xhead);
         }
     }
     return ret;
@@ -575,7 +580,7 @@ int trackerd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *
     if(conn && packet && (xhead = (DBHEAD *)(packet->data)))
     {
         xhead->ssize = chunk->ndata;
-        ret = traced_request_handler(conn, xhead);
+        ret = traced_local_handler(conn, xhead);
     }
     return ret;
 }
@@ -652,8 +657,9 @@ int traced_req_handler(CONN *conn)
     DBHEAD *xhead = NULL;
     CONN *xconn = NULL;
 
-    if(conn && conn->cache.ndata > 0 && (xhead = (DBHEAD *)(conn->cache.data)))
+    if(conn && conn->header.ndata > 0 && (xhead = (DBHEAD *)(conn->header.data)))
     {
+        xhead->cid = conn->index;
         if(xhead->ssize > 0)
         { 
             if((xconn = httpd->findconn(httpd, xhead->index)))
@@ -678,31 +684,24 @@ int traced_req_handler(CONN *conn)
 int traced_trans_handler(CONN *conn, int tid)
 {
     DBHEAD *xhead = NULL;
-    CONN *xconn = NULL;
     int ret = -1;
 
     if(conn && tid > 0)
     {
         if(conn->status == CONN_STATUS_FREE)
         {
-            if((xconn = httpd->findconn(httpd, tid))
-                    && (xhead = (DBHEAD *)(xconn->cache.data)))
+            if((xhead = (DBHEAD *)(conn->header.data)) && xhead->cid == 0)
             {
                 if(xhead->ssize > 0)
                 {
-                    ACCESS_LOGGER(logger, "READY_PUT{cmd:%d qid:%d key:%llu ssize:%d} on %s:%d", xhead->cmd, xhead->qid, (uint64_t)xhead->id, xhead->ssize, conn->remote_ip, conn->remote_port);
+                    ACCESS_LOGGER(logger, "READY_PUT{cmd:%d qid:%d key:%llu ssize:%d} on %s:%d via %d", xhead->cmd, xhead->qid, (uint64_t)xhead->id, xhead->ssize, conn->remote_ip, conn->remote_port, conn->fd);
                 }
                 else
                 {
-                    ACCESS_LOGGER(logger, "READY_GET{cmd:%d qid:%d key:%llu size:%d} on %s:%d", xhead->cmd, xhead->qid, (uint64_t)xhead->id, xhead->size, conn->remote_ip, conn->remote_port);
+                    ACCESS_LOGGER(logger, "READY_GET{cmd:%d qid:%d key:%llu size:%d} on %s:%d via %d", xhead->cmd, xhead->qid, (uint64_t)xhead->id, xhead->size, conn->remote_ip, conn->remote_port, conn->fd);
                 }
-                conn->save_cache(conn, xhead, sizeof(DBHEAD));
                 ret = traced_req_handler(conn);
             }
-        }
-        else
-        {
-            ret = traced->newtransaction(traced, conn, tid);
         }
     }
     return ret;
@@ -716,6 +715,7 @@ int traced_packet_handler(CONN *conn, CB_DATA *packet)
 
     if(conn && packet && (xhead = (DBHEAD *)packet->data))
     {
+        conn->over_estate(conn);
         ACCESS_LOGGER(logger, "RESP{key:%llu} on %s:%d via %d", (uint64_t)xhead->id, conn->remote_ip, conn->remote_port, conn->fd);
         switch(xhead->cmd)
         {
@@ -742,6 +742,7 @@ int traced_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *ch
     {
         //fprintf(stdout, "%s::%d cmd:%d/%d\r\n", __FILE__, __LINE__, xhead->cmd, DBASE_RESP_GET);
         ACCESS_LOGGER(logger, "RESP_DATA{qid:%d key:%llu} on %s:%d", xhead->qid, (uint64_t)xhead->id, conn->remote_ip, conn->remote_port);
+        conn->over_estate(conn);
         if(xhead->cmd == DBASE_RESP_GET)
         {
             httpd_out_handler(xhead->index, chunk->data, chunk->ndata);
@@ -758,7 +759,7 @@ int traced_error_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *c
     DBHEAD *xhead = NULL;
     int ret = -1;
 
-    if(conn && cache && (xhead = (DBHEAD *)cache->data)
+    if(conn && (xhead = (DBHEAD *)conn->header.data)
         && (xhead->cmd == DBASE_REQ_GET || xhead->cmd == DBASE_REQ_SET))
     {
         httpd_error_handler(xhead->index, xhead->id);
@@ -808,9 +809,10 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
 {
     int ret = -1, gid = 0, total = 0, status = -1;
     DBHEAD *resp = NULL, xhead = {0};
+    SESSION sess = {0};
     CONN *xconn = NULL;
 
-    if(conn && packet && (resp = (DBHEAD *)packet->data) 
+    if(conn && packet && (resp = (DBHEAD *)(packet->data)) 
             && resp->status == DBASE_STATUS_OK)
     {
         traced_update_metainfo(resp, conn->remote_ip, resp->port, &gid, &total, &status);
@@ -839,14 +841,19 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
         {
             if((xconn = traced->getconn(traced, gid)))
             {
+                xconn->wait_estate(xconn);
                 xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
                 ret = traced_req_handler(xconn);
             }
             else
-            {
-                xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, NULL);
+            {        
+                memcpy(&sess, &(traced->session), sizeof(SESSION));
+                sess.ok_handler = traced_req_handler;
+                xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, &sess);
                 if(xconn)
                 {
+                    xconn->wait_estate(xconn);
+                    xconn->save_header(xconn, &xhead, sizeof(DBHEAD));
                     ret = traced->newtransaction(traced, xconn, xhead.index);
                 }
                 else
@@ -1059,6 +1066,7 @@ int sbase_initialize(SBASE *sbase, char *conf)
     httpd->nworking_tosleep = iniparser_getint(dict, "HTTPD:nworking_tosleep", SB_NWORKING_TOSLEEP);
     httpd->set_log(httpd, iniparser_getstr(dict, "HTTPD:logfile"));
     httpd->set_log_level(httpd, iniparser_getint(dict, "HTTPD:log_level", 0));
+    httpd->session.flags = SB_NONBLOCK;
     httpd->session.packet_type = iniparser_getint(dict, "HTTPD:packet_type",PACKET_DELIMITER);
     httpd->session.packet_delimiter = iniparser_getstr(dict, "HTTPD:packet_delimiter");
     p = s = httpd->session.packet_delimiter;
@@ -1117,6 +1125,7 @@ int sbase_initialize(SBASE *sbase, char *conf)
     trackerd->nworking_tosleep = iniparser_getint(dict, "TRACKERD:nworking_tosleep", SB_NWORKING_TOSLEEP);
     trackerd->set_log(trackerd, iniparser_getstr(dict, "TRACKERD:logfile"));
     trackerd->set_log_level(trackerd, iniparser_getint(dict, "TRACKERD:log_level", 0));
+    trackerd->session.flags = SB_NONBLOCK;
     trackerd->session.packet_type = PACKET_CERTAIN_LENGTH;
     trackerd->session.packet_length = sizeof(DBHEAD);
     trackerd->session.buffer_size = iniparser_getint(dict, "TRACKERD:buffer_size", SB_BUF_SIZE);
@@ -1156,6 +1165,7 @@ int sbase_initialize(SBASE *sbase, char *conf)
     traced->nworking_tosleep = iniparser_getint(dict, "TRACED:nworking_tosleep", SB_NWORKING_TOSLEEP);
     traced->set_log(traced, iniparser_getstr(dict, "TRACED:logfile"));
     traced->set_log_level(traced, iniparser_getint(dict, "TRACED:log_level", 0));
+    traced->session.flags = SB_NONBLOCK;
     traced->session.packet_type = PACKET_CERTAIN_LENGTH;
     traced->session.packet_length = sizeof(DBHEAD);
     traced->session.buffer_size = iniparser_getint(dict, "TRACED:buffer_size", SB_BUF_SIZE);
