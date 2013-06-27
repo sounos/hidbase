@@ -680,7 +680,7 @@ int traced_req_handler(CONN *conn)
         {
             ret = conn->push_chunk(conn, xhead, sizeof(DBHEAD));
         }
-        xhead->index = conn->index;
+        xhead->cmd = 0;/* disable retry quest */
     }
     return ret;
 }
@@ -695,8 +695,7 @@ int traced_trans_handler(CONN *conn, int tid)
     {
         if(conn->status == CONN_STATUS_FREE)
         {
-            if((xhead = (DBHEAD *)(conn->header.data)) 
-                    && xhead->index != conn->index)
+            if((xhead = (DBHEAD *)(conn->header.data)) && xhead->cmd)
             {
                 if(xhead->ssize > 0)
                 {
