@@ -95,11 +95,11 @@ hichunkd_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 am_hitrackerd_OBJECTS = hitrackerd-hitrackerd.$(OBJEXT) \
 	hitrackerd-iniparser.$(OBJEXT) hitrackerd-xmap.$(OBJEXT) \
 	hitrackerd-http.$(OBJEXT) hitrackerd-mmtrie.$(OBJEXT) \
-	hitrackerd-logger.$(OBJEXT) hitrackerd-mtrie.$(OBJEXT) \
-	hitrackerd-stime.$(OBJEXT) hitrackerd-base64.$(OBJEXT) \
-	hitrackerd-iqueue.$(OBJEXT) hitrackerd-xmm.$(OBJEXT) \
-	hitrackerd-mmtree64.$(OBJEXT) hitrackerd-mmtree.$(OBJEXT) \
-	hitrackerd-mmqueue.$(OBJEXT)
+	hitrackerd-db.$(OBJEXT) hitrackerd-logger.$(OBJEXT) \
+	hitrackerd-mtrie.$(OBJEXT) hitrackerd-stime.$(OBJEXT) \
+	hitrackerd-base64.$(OBJEXT) hitrackerd-iqueue.$(OBJEXT) \
+	hitrackerd-xmm.$(OBJEXT) hitrackerd-mmtree64.$(OBJEXT) \
+	hitrackerd-mmtree.$(OBJEXT) hitrackerd-mmqueue.$(OBJEXT)
 hitrackerd_OBJECTS = $(am_hitrackerd_OBJECTS)
 hitrackerd_LDADD = $(LDADD)
 hitrackerd_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
@@ -241,19 +241,19 @@ libdbase_la_SOURCES = dbase.c utils/xmm.c utils/md5.h utils/md5.c utils/timer.h
 libdbase_la_CPPFLAGS = -I utils -D_FILE_OFFSET_BITS=64 -Wall
 include_HEADERS = dbase.h
 hichunkd_SOURCES = hichunkd.c xdbase.h xdbase.c iniparser.c iniparser.h base64chunkdhtml.h \
-	dbase.h dbase.c utils/http.h utils/http.c utils/mmtrie.h utils/mmtrie.c utils/db.c utils/db.h \
+	dbase.h dbase.c utils/http.h utils/http.c utils/mmtrie.h utils/mmtrie.c utils/db.c \
 	utils/logger.h utils/logger.c utils/mtrie.h utils/mtrie.c utils/stime.h utils/stime.c \
 	utils/base64.h utils/base64.c utils/iqueue.h utils/iqueue.c utils/xmm.h utils/xmm.c \
 	utils/mutex.h utils/mmtree64.h utils/mmtree64.c utils/md5.h utils/md5.c \
-	utils/mmqueue.h utils/mmqueue.c
+	utils/mmqueue.h utils/mmqueue.c utils/db.h
 
 hichunkd_CPPFLAGS = -I utils/ -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -Wall
 hichunkd_LDFLAGS = -lz -lsbase
 hitrackerd_SOURCES = hitrackerd.c iniparser.c iniparser.h base64trackerdhtml.h xmap.h xmap.c \
-				 utils/http.h utils/http.c utils/mmtrie.h utils/mmtrie.c \
+				 utils/http.h utils/http.c utils/mmtrie.h utils/mmtrie.c utils/db.c \
 				 utils/logger.h utils/logger.c utils/mutex.h utils/mtrie.h utils/mtrie.c \
 				 utils/stime.h utils/stime.c utils/base64.h utils/base64.c \
-				utils/iqueue.h utils/iqueue.c utils/xmm.h utils/xmm.c \
+				utils/iqueue.h utils/iqueue.c utils/xmm.h utils/xmm.c utils/db.h \
 				utils/mmtree64.h utils/mmtree64.c utils/mmtree.h utils/mmtree.c \
 				utils/mmqueue.h utils/mmqueue.c
 
@@ -400,6 +400,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hichunkd-xdbase.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hichunkd-xmm.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-base64.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-db.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-hitrackerd.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-http.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hitrackerd-iniparser.Po@am__quote@
@@ -752,6 +753,20 @@ hitrackerd-mmtrie.obj: utils/mmtrie.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/mmtrie.c' object='hitrackerd-mmtrie.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o hitrackerd-mmtrie.obj `if test -f 'utils/mmtrie.c'; then $(CYGPATH_W) 'utils/mmtrie.c'; else $(CYGPATH_W) '$(srcdir)/utils/mmtrie.c'; fi`
+
+hitrackerd-db.o: utils/db.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT hitrackerd-db.o -MD -MP -MF $(DEPDIR)/hitrackerd-db.Tpo -c -o hitrackerd-db.o `test -f 'utils/db.c' || echo '$(srcdir)/'`utils/db.c
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/hitrackerd-db.Tpo $(DEPDIR)/hitrackerd-db.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/db.c' object='hitrackerd-db.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o hitrackerd-db.o `test -f 'utils/db.c' || echo '$(srcdir)/'`utils/db.c
+
+hitrackerd-db.obj: utils/db.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT hitrackerd-db.obj -MD -MP -MF $(DEPDIR)/hitrackerd-db.Tpo -c -o hitrackerd-db.obj `if test -f 'utils/db.c'; then $(CYGPATH_W) 'utils/db.c'; else $(CYGPATH_W) '$(srcdir)/utils/db.c'; fi`
+@am__fastdepCC_TRUE@	$(am__mv) $(DEPDIR)/hitrackerd-db.Tpo $(DEPDIR)/hitrackerd-db.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='utils/db.c' object='hitrackerd-db.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o hitrackerd-db.obj `if test -f 'utils/db.c'; then $(CYGPATH_W) 'utils/db.c'; else $(CYGPATH_W) '$(srcdir)/utils/db.c'; fi`
 
 hitrackerd-logger.o: utils/logger.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(hitrackerd_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT hitrackerd-logger.o -MD -MP -MF $(DEPDIR)/hitrackerd-logger.Tpo -c -o hitrackerd-logger.o `test -f 'utils/logger.c' || echo '$(srcdir)/'`utils/logger.c

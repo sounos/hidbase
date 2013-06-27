@@ -189,20 +189,6 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
     return ret;
 }
 
-/* failed handler */
-void httpd_fail_handler(int index)
-{
-    //char buf[HTTP_BUF_SIZE];
-    CONN *conn  = NULL;
-
-    if(index && (conn = httpd->findconn(httpd, index)))
-    {
-        conn->push_chunk(conn, HTTP_BAD_REQUEST, strlen(HTTP_BAD_REQUEST));
-        conn->over(conn);
-    }
-    return ;
-}
-
 /* over handler */
 void httpd_over_handler(int index, int64_t key)
 {
@@ -219,15 +205,15 @@ void httpd_over_handler(int index, int64_t key)
     return ;
 }
 
-/* error handler */
-void httpd_error_handler(int index, int64_t key)
+/* fail handler */
+void httpd_fail_handler(int index, int64_t key)
 {
     //char buf[HTTP_BUF_SIZE];
     CONN *conn  = NULL;
 
     if(index && (conn = httpd->findconn(httpd, index)) && key == conn->xids64[0])
     {
-        ACCESS_LOGGER(logger, "error{key:%llu}", LLU(conn->xids64[0]));
+        ACCESS_LOGGER(logger, "fail_req{key:%llu}", LLU(conn->xids64[0]));
         conn->push_chunk(conn, HTTP_BAD_REQUEST, strlen(HTTP_BAD_REQUEST));
         conn->over(conn);
     }
@@ -487,7 +473,7 @@ int traced_try_request(CONN *conn, DBHEAD *xhead, XMSETS *xsets, int num)
                 {
                     ACCESS_LOGGER(logger, "NO_FREE_CONN[%s:%d]{key:%llu qid:%d}",
                             ip, port, (uint64_t)xhead->id, xhead->qid);
-                    httpd_error_handler(xhead->index, xhead->id);
+                    httpd_fail_handler(xhead->index, xhead->id);
                 }
             }
             if(xhead->cmd == DBASE_REQ_GET) break;
@@ -667,7 +653,7 @@ int traced_req_handler(CONN *conn)
                 chunk = (CB_DATA*)&(xconn->chunk2);
                 xhead->length = chunk->ndata; 
                 conn->push_chunk(conn, xhead, sizeof(DBHEAD));
-                conn->relay_chunk(conn, chunk, xhead->length);
+                //conn->relay_chunk(conn, chunk, xhead->length);
                 ACCESS_LOGGER(logger, "REQ{cmd:%d key:%llu length:%d/%d} on %s:%d via %d", xhead->cmd, (uint64_t)xhead->id, chunk->ndata, xhead->ssize, conn->remote_ip, conn->remote_port, conn->fd);
                 chunk = NULL;
             }
@@ -762,7 +748,8 @@ int traced_error_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *c
     if(conn && (xhead = (DBHEAD *)conn->header.data)
         && (xhead->cmd == DBASE_REQ_GET || xhead->cmd == DBASE_REQ_SET))
     {
-        httpd_error_handler(xhead->index, xhead->id);
+        ACCESS_LOGGER(logger, "ERR_REQ{qid:%d key:%llu} on remote[%s:%d] local[%s:%d] via %d", xhead->qid, (uint64_t)xhead->id, conn->remote_ip, conn->remote_port, conn->local_ip, conn->local_port, conn->fd);
+        httpd_fail_handler(xhead->index, xhead->id);
         ret = 0;
     }
     return ret;
@@ -861,7 +848,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                     ACCESS_LOGGER(logger, "NO_FREE_CONN[%s:%d]{key:%llu qid:%d}", 
                             conn->remote_ip, resp->port, (uint64_t)resp->id, resp->qid);
 
-                    httpd_error_handler(xhead.index, xhead.id);
+                    httpd_fail_handler(xhead.index, xhead.id);
                 }
             }
         }

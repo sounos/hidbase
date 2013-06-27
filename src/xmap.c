@@ -14,6 +14,7 @@
 #include "xmap.h"
 #include "logger.h"
 #include "mutex.h"
+#include "db.h"
 #include "mtrie.h"
 #include "mmqueue.h"
 #include "mmtrie.h"
@@ -114,8 +115,8 @@ XMAP *xmap_init(char *basedir)
         sprintf(path, "%s/%s", basedir, "xmap.queue");
         xmap->queue = mmqueue_init(path);
         /* db */
-        //sprintf(path, "%s/%s", basedir, "db/");
-        //xmap->db = cdb_init(path, CDB_USE_MMAP);
+        sprintf(path, "%s/%s", basedir, "db/");
+        xmap->db = db_init(path, DB_USE_MMAP);
         /* state */
         sprintf(path, "%s/%s", basedir, "xmap.state");
         if((xmap->stateio.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
@@ -179,12 +180,13 @@ XMAP *xmap_init(char *basedir)
         }
         if(!xmap->state->qwait) xmap->state->qwait = mmtree_new_tree(xmap->tree);
         if(!xmap->state->qleft) xmap->state->qleft = mmqueue_new(xmap->queue);
+        xmap->state->id_wait = 0;
         while((id = mmtree_min(xmap->tree, xmap->state->qwait, &k, &v)))
         {
             mmtree_remove(xmap->tree, xmap->state->qwait, id, NULL, NULL);
-            mmqueue_push(xmap->queue, xmap->state->qleft, k);
         }
-        //cdb_destroy(xmap->db);
+        while(mmqueue_pop(xmap->queue, xmap->state->qleft, (int *)&id) > 0);
+        //db_destroy(xmap->db);
     }
     return xmap;
 }
@@ -440,23 +442,40 @@ int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
     return ret;
 }
 
-/* cache data */
-int xmap_cache(XMAP *xmap, char *data, int ndata)
+/* truncate cache block */
+int xmap_truncate_block(XMAP *xmap, int ndata, char **block)
 {
     int id = 0;
 
-    if(xmap && data && ndata > 0)
+    if(xmap && ndata > 0 && block)
     {
-        /*
         MUTEX_LOCK(xmap->cmutex);
         if(mmqueue_pop(xmap->queue, xmap->state->qleft, &id) < 0)
             id = ++(xmap->state->id_wait);
-        cdb_set_data(xmap->db, id, data, ndata);
-        mmtree_try_insert(xmap->tree, xmap->state->qwait, id, id, NULL);
+        if((*block = db_truncate_block(xmap->db, id, ndata)))
+        {
+            mmtree_try_insert(xmap->tree, xmap->state->qwait, id, id, NULL);
+        }
+        else
+        {
+            mmqueue_push(xmap->queue, xmap->state->qleft, id);
+            id = 0;
+        }
         MUTEX_UNLOCK(xmap->cmutex);
-        */
     }
     return id;
+}
+
+/* get cache info */
+int xmap_cache_info(XMAP *xmap, int id, char **block)
+{
+    int ret = -1;
+
+    if(xmap && id > 0 && id <= xmap->state->id_wait)
+    {
+        ret = db_exists_block(xmap->db, id, block);
+    }
+    return ret;
 }
 
 /* get cache len */
@@ -466,7 +485,7 @@ int xmap_cache_len(XMAP *xmap, int id)
 
     if(xmap && id)
     {
-        //ret = cdb_get_data_len(xmap->db, id);
+        ret = db_get_data_len(xmap->db, id);
         //FATAL_LOGGER(xmap->logger, "get_data_len(%d) => %d", id, ret);
     }
     return ret;
@@ -479,7 +498,7 @@ int xmap_read_cache(XMAP *xmap, int id, char *data)
 
     if(xmap && id && data)
     {
-        //ret = cdb_read_data(xmap->db, id, data);
+        ret = db_read_data(xmap->db, id, data);
     }
     return ret;
 }
@@ -498,7 +517,7 @@ int xmap_drop_cache(XMAP *xmap, int id)
             mmtree_remove(xmap->tree, xmap->state->qwait, oid, NULL, NULL);
             mmqueue_push(xmap->queue, xmap->state->qleft, id);
         }
-        //ret = cdb_del_data(xmap->db, id);
+        ret = db_del_data(xmap->db, id);
         //FATAL_LOGGER(xmap->logger, "del_data(%d) => %d", id, ret);
     }
     return ret;
@@ -514,8 +533,8 @@ void xmap_clean(XMAP *xmap)
         mmqueue_clean(xmap->queue);
         mmtrie_clean(xmap->kmap);
         mtrie_clean(xmap->mtrie);
-        //cdb_reset(xmap->db);
-        //cdb_clean(xmap->db);
+        db_reset(xmap->db);
+        db_clean(xmap->db);
         if(xmap->diskio.map) 
         {
             munmap(xmap->diskio.map, xmap->diskio.size);

@@ -102,6 +102,10 @@ int xmap_set_disk(XMAP *xmap, MDISK *disk);
 int xmap_set_groupid(XMAP *xmap, int diskid, int groupid);
 /* get diskid */
 int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid);
+/* truncate block */
+int xmap_truncate_block(XMAP *xmap, int len, char **block);
+/* get cache info*/
+int xmap_cache_info(XMAP *xmap, int id, char **block);
 /* cache data */
 int xmap_cache(XMAP *xmap, char *data, int ndata);
 /* cache data size */

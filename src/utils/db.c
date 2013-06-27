@@ -1032,6 +1032,79 @@ int db_xget_data_len(DB *db, char *key, int nkey)
     return ret;
 }
 
+/* truncate block */
+void *db_truncate_block(DB *db, int id, int ndata)
+{
+    int index = 0, blocks_count = 0;
+    XLNK lnk = {0}, old = {0};
+    DBX *dbx = NULL;
+    void *ret = NULL;
+
+    if(db && id >= 0 && ndata > 0 && db->status == 0 && (dbx = (DBX *)(db->dbxio.map)))
+    {
+        MUTEX_LOCK(db->mutex_dbx);
+        CHECK_DBXIO(db, id);
+        MUTEX_UNLOCK(db->mutex_dbx);
+        db_mutex_lock(db, id);
+        if(dbx[id].block_size < ndata)
+        {
+            if(dbx[id].block_size > 0)
+            {
+                old.index = dbx[id].index;
+                old.blockid = dbx[id].blockid;
+                old.count = DB_BLOCKS_COUNT(dbx[id].block_size);
+                dbx[id].block_size = 0;
+                dbx[id].blockid = 0;
+                dbx[id].ndata = 0;
+            }
+            blocks_count = DB_BLOCKS_COUNT(ndata);
+            if(db_pop_block(db, blocks_count, &lnk) == 0)
+            {
+                dbx[id].index = lnk.index;
+                dbx[id].blockid = lnk.blockid;
+                dbx[id].block_size = blocks_count * DB_BASE_SIZE;
+                ACCESS_LOGGER(db->logger, "pop_block() dbxid:%d blockid:%d index:%d block_size:%d ndata:%d",id, lnk.blockid, lnk.index, dbx[id].block_size, ndata);
+                if(ndata > dbx[id].block_size)
+                {
+                    FATAL_LOGGER(db->logger, "Invalid blockid:%d ndata:%d block_count:%d", lnk.blockid, ndata, blocks_count);
+                    _exit(-1);
+                }
+            }
+            else
+            {
+                FATAL_LOGGER(db->logger, "pop_block(%d) failed, %s", blocks_count, strerror(errno));
+                _exit(-1);
+            }
+        }
+        if(dbx[id].block_size >= ndata && (index = dbx[id].index) >= 0 && db->dbsio[index].fd > 0)
+        {
+            if(db->state->mode && dbx[id].blockid >= 0 && db->dbsio[index].map)
+            {
+                ret = (char *)(db->dbsio[index].map)+(off_t)dbx[id].blockid * (off_t)DB_BASE_SIZE;
+                dbx[id].ndata = ndata;
+            }
+            else
+            {
+                ret = NULL;
+            }
+        }
+        else
+        {
+            FATAL_LOGGER(db->logger, "Invalid index[%d] dbx[%d] ndata:%d to block[%d] block_size:%d off:%lld failed, %s", index, id, ndata, dbx[id].blockid, dbx[id].block_size, LL(db->dbxio.end), strerror(errno));
+            _exit(-1);
+        }
+        if(dbx[id].ndata > db->state->data_len_max) db->state->data_len_max = dbx[id].ndata;
+        dbx[id].mod_time = (int)time(NULL);
+        db_mutex_unlock(db, id);
+        if(old.count > 0)
+        {
+            ACCESS_LOGGER(db->logger, "push_block() dbxid:%d blockid:%d index:%d block_size:%d",id, old.blockid, old.index, old.count * DB_BASE_SIZE);
+            db_push_block(db, old.index, old.blockid, old.count * DB_BASE_SIZE);
+        }
+    }
+    return ret;
+}
+
 /* get data block address and len */
 int db_exists_block(DB *db, int id, char **ptr)
 {
