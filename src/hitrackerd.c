@@ -164,6 +164,7 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
         {
             xhead.cmd = DBASE_REQ_GET;
         }
+        xhead.cid = conn->xids[0];
         xhead.index = conn->index;
         conn->xids64[0] = xhead.id;
         conn->xids[0] = http_req->reqid;
@@ -177,13 +178,12 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
         }
         if(data && ndata > 0)
         {
-            conn->setto_chunk2(conn);
+            //conn->setto_chunk2(conn);
             xhead.ssize = ndata;
             xhead.size = ndata;
             conn->xids[2] = XM_HOST_MAX;
         }
         ACCESS_LOGGER(logger, "READY_REQUIRE{%s %s qid:%d key:%llu length:%d group[%d]} from %s:%d ", http_methods[http_req->reqid].e, http_req->path, xhead.qid, (uint64_t)(xhead.id), xhead.ssize, k, conn->remote_ip, conn->remote_port);
-        //conn->save_cache(conn, &xhead);
         ret = traced_local_handler(conn, &xhead);
     }
     return ret;
@@ -240,10 +240,10 @@ void httpd_out_handler(int index, char *data, int ndata)
 /* packet handler */
 int httpd_packet_handler(CONN *conn, CB_DATA *packet)
 {
-    char buf[HTTP_BUF_SIZE], file[HTTP_PATH_MAX], *p = NULL, *end = NULL;
+    char buf[HTTP_BUF_SIZE], file[HTTP_PATH_MAX], *block = NULL, *p = NULL, *end = NULL;
     HTTP_REQ http_req = {0};
-    int ret = -1, n = 0;
     struct stat st = {0};
+    int ret = -1, n = 0;
     
     if(conn)
     {
@@ -255,8 +255,17 @@ int httpd_packet_handler(CONN *conn, CB_DATA *packet)
         if((n = http_req.headers[HEAD_ENT_CONTENT_LENGTH]) > 0
                 && (n = atol(http_req.hlines + n)) > 0)
         {
-            conn->save_cache(conn, &http_req, sizeof(HTTP_REQ));
-            return conn->recv_chunk(conn, n);
+            if((conn->xids[0] = xmap_truncate_block(xmap, n+1, &block)) > 0 && block)
+            {
+                conn->wait_estate(conn);
+                conn->save_cache(conn, &http_req, sizeof(HTTP_REQ));
+                return conn->store_chunk(conn, block, n);
+            }
+            else 
+            {
+                conn->over(conn);
+                return 0;
+            }
         }
         //fprintf(stdout, "%s:%d headers:%s\r\n", __FILE__, __LINE__, p);
         if(strncasecmp(http_req.path, dbprefix, ndbprefix) == 0) 
@@ -346,6 +355,7 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
 
     if(conn && packet && cache && chunk && chunk->ndata > 0)
     {
+        conn->over_estate(conn);
         if((http_req = (HTTP_REQ *)cache->data))
         {
             if(http_req->reqid == HTTP_PUT)
@@ -402,6 +412,20 @@ int httpd_timeout_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *
     }
     return -1;
 }
+
+/* error handler */
+int httpd_error_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chunk)
+{
+    int ret = -1;
+
+    if(conn && conn->xids[0] > 0)
+    {
+        xmap_drop_cache(xmap, conn->xids[0]);
+        conn->xids[0] = 0;
+    }
+    return ret;
+}
+
 
 /* OOB data handler for httpd */
 int httpd_oob_handler(CONN *conn, CB_DATA *oob)
@@ -639,31 +663,26 @@ int trackerd_oob_handler(CONN *conn, CB_DATA *oob)
 /* req handler */
 int traced_req_handler(CONN *conn)
 {
-    CB_DATA *chunk = NULL;
     DBHEAD *xhead = NULL;
-    CONN *xconn = NULL;
+    char *block = NULL;
+    int ret = -1;
 
     if(conn && conn->header.ndata > 0 && (xhead = (DBHEAD *)(conn->header.data)))
     {
-        xhead->cid = conn->index;
-        if(xhead->ssize > 0)
+        if(xhead->ssize > 0 && xmap_cache_info(xmap, xhead->cid, &block) > 0 && block)
         { 
-            if((xconn = httpd->findconn(httpd, xhead->index)))
-            {
-                chunk = (CB_DATA*)&(xconn->chunk2);
-                xhead->length = chunk->ndata; 
-                conn->push_chunk(conn, xhead, sizeof(DBHEAD));
-                //conn->relay_chunk(conn, chunk, xhead->length);
-                ACCESS_LOGGER(logger, "REQ{cmd:%d key:%llu length:%d/%d} on %s:%d via %d", xhead->cmd, (uint64_t)xhead->id, chunk->ndata, xhead->ssize, conn->remote_ip, conn->remote_port, conn->fd);
-                chunk = NULL;
-            }
+            xhead->length = xhead->ssize; 
+            conn->push_chunk(conn, xhead, sizeof(DBHEAD));
+            ret = conn->relay_chunk(conn, block, xhead->ssize);
+            ACCESS_LOGGER(logger, "REQ{cmd:%d key:%llu length:%d} on %s:%d via %d", xhead->cmd, (uint64_t)xhead->id, xhead->ssize, conn->remote_ip, conn->remote_port, conn->fd);
         }
         else
         {
-            conn->push_chunk(conn, xhead, sizeof(DBHEAD));
+            ret = conn->push_chunk(conn, xhead, sizeof(DBHEAD));
         }
+        xhead->index = conn->index;
     }
-    return -1;
+    return ret;
 }
 
 /* trans handler */
@@ -676,7 +695,8 @@ int traced_trans_handler(CONN *conn, int tid)
     {
         if(conn->status == CONN_STATUS_FREE)
         {
-            if((xhead = (DBHEAD *)(conn->header.data)) && xhead->cid == 0)
+            if((xhead = (DBHEAD *)(conn->header.data)) 
+                    && xhead->index != conn->index)
             {
                 if(xhead->ssize > 0)
                 {
