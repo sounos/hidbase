@@ -114,6 +114,10 @@ int xmap_cache_len(XMAP *xmap, int id);
 int xmap_read_cache(XMAP *xmap, int id, char *data);
 /* drop cache */
 int xmap_drop_cache(XMAP *xmap, int id);
+/* new task */
+int xmap_new_task(XMAP *xmap, int id);
+/* over task */
+int xmap_over_task(XMAP *xmap, int id);
 /* xmap clean */
 void xmap_clean(XMAP *xmap);
 #endif

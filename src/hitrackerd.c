@@ -194,8 +194,7 @@ void httpd_over_handler(int index, int64_t key)
 {
     CONN *conn  = NULL;
 
-    if(index && (conn = httpd->findconn(httpd, index)) && key == conn->xids64[0]
-        && --(conn->xids[2]) == 0)
+    if(index && (conn = httpd->findconn(httpd, index)) && key == conn->xids64[0])
     {
         ACCESS_LOGGER(logger, "over key:%llu", LLU(conn->xids64[0]));
         conn->reset_chunk2(conn);
@@ -255,7 +254,7 @@ int httpd_packet_handler(CONN *conn, CB_DATA *packet)
         if((n = http_req.headers[HEAD_ENT_CONTENT_LENGTH]) > 0
                 && (n = atol(http_req.hlines + n)) > 0)
         {
-            if((conn->xids[0] = xmap_truncate_block(xmap, n+1, &block)) > 0 && block)
+            if((conn->xids[0] = xmap_truncate_block(xmap, n, &block)) > 0 && block)
             {
                 conn->wait_estate(conn);
                 conn->save_cache(conn, &http_req, sizeof(HTTP_REQ));
@@ -671,6 +670,7 @@ int traced_req_handler(CONN *conn)
     {
         if(xhead->ssize > 0 && xmap_cache_info(xmap, xhead->cid, &block) > 0 && block)
         { 
+            xmap_new_task(xmap, xhead->cid);
             xhead->length = xhead->ssize; 
             conn->push_chunk(conn, xhead, sizeof(DBHEAD));
             ret = conn->relay_chunk(conn, block, xhead->ssize);
@@ -722,14 +722,9 @@ int traced_packet_handler(CONN *conn, CB_DATA *packet)
     {
         conn->over_estate(conn);
         ACCESS_LOGGER(logger, "RESP{key:%llu} on %s:%d via %d", (uint64_t)xhead->id, conn->remote_ip, conn->remote_port, conn->fd);
-        switch(xhead->cmd)
+        if(xhead->cmd == DBASE_RESP_SET && xmap_over_task(xmap, xhead->cid) == 0)
         {
-            case DBASE_RESP_SET:
-                httpd_over_handler(xhead->index, xhead->id);
-                ret = 0;
-                break;
-            default:
-                break;
+            httpd_over_handler(xhead->index, xhead->id);
         }
         if(!conn->groupid) conn->over_session(conn);
     }

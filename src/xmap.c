@@ -454,7 +454,7 @@ int xmap_truncate_block(XMAP *xmap, int ndata, char **block)
             id = ++(xmap->state->id_wait);
         if((*block = db_truncate_block(xmap->db, id, ndata)))
         {
-            mmtree_try_insert(xmap->tree, xmap->state->qwait, id, id, NULL);
+            mmtree_try_insert(xmap->tree, xmap->state->qwait, id, 0, NULL);
         }
         else
         {
@@ -502,6 +502,54 @@ int xmap_read_cache(XMAP *xmap, int id, char *data)
     }
     return ret;
 }
+
+/* new task */
+int xmap_new_task(XMAP *xmap, int id)
+{
+    unsigned int oid = 0;
+    int ret = 0, n = 0;
+
+    if(xmap && id)
+    {
+        MUTEX_LOCK(xmap->cmutex);
+        if((oid = mmtree_find(xmap->tree, xmap->state->qwait, id, &n)) > 0)
+        {
+            mmtree_set_data(xmap->tree, xmap->state->qwait, oid, ++n);
+        }
+        MUTEX_UNLOCK(xmap->cmutex);
+    }
+    return ret;
+}
+
+/* over task */
+int xmap_over_task(XMAP *xmap, int id)
+{
+    unsigned int oid = 0;
+    int ret = 0, n = -1;
+
+    if(xmap && id)
+    {
+        MUTEX_LOCK(xmap->cmutex);
+        if((oid = mmtree_find(xmap->tree, xmap->state->qwait, id, &n)) > 0)
+        {
+            if(--n == 0)
+            {
+                mmtree_remove(xmap->tree, xmap->state->qwait, oid, NULL, NULL);
+                mmqueue_push(xmap->queue, xmap->state->qleft, id);
+                ret = db_del_data(xmap->db, id);
+            }
+            else
+            {
+                mmtree_set_data(xmap->tree, xmap->state->qwait, oid, --n);
+            }
+        }
+        ret = n;
+        MUTEX_LOCK(xmap->cmutex);
+    }
+    return ret;
+}
+
+
 
 /* drop cache */
 int xmap_drop_cache(XMAP *xmap, int id)
