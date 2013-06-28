@@ -115,7 +115,7 @@ XMAP *xmap_init(char *basedir)
         sprintf(path, "%s/%s", basedir, "xmap.queue");
         xmap->queue = mmqueue_init(path);
         /* db */
-        sprintf(path, "%s/%s", basedir, "db/");
+        sprintf(path, "%s/%s", basedir, "cache/");
         xmap->db = db_init(path, DB_USE_MMAP);
         /* state */
         sprintf(path, "%s/%s", basedir, "xmap.state");
@@ -186,7 +186,6 @@ XMAP *xmap_init(char *basedir)
             mmtree_remove(xmap->tree, xmap->state->qwait, id, NULL, NULL);
         }
         while(mmqueue_pop(xmap->queue, xmap->state->qleft, (int *)&id) > 0);
-        //db_destroy(xmap->db);
     }
     return xmap;
 }
@@ -238,7 +237,7 @@ int xmap_qid(XMAP *xmap, int64_t key, int *status, XMSETS *xsets, int *num)
         {
             *status = XM_STATUS_FREE;
             *num = xmap->metas[qid].count = 0;
-            xmap->metas[qid].modtime = 0;
+            xmap->metas[qid].modtime = time(NULL);
             xmap->metas[qid].status = XM_STATUS_WAIT;
             memset(xmap->metas[qid].disks, 0, sizeof(uint32_t) * XM_HOST_MAX);
         }
@@ -323,7 +322,11 @@ int xmap_over_meta(XMAP *xmap, int qid, int diskid, int *status)
             {
                 xmap->metas[qid].disks[k] = diskid;
                 ret = ++(xmap->metas[qid].count);
-                if(ret == XM_HOST_MAX) xmap->metas[qid].status = XM_STATUS_FREE;
+                if(ret == XM_HOST_MAX) 
+                {
+                    xmap->metas[qid].status = XM_STATUS_FREE;
+                    xmap->metas[qid].modtime = time(NULL);
+                }
                 *status = xmap->metas[qid].status;
             }
         }
@@ -514,7 +517,7 @@ int xmap_new_task(XMAP *xmap, int id)
         MUTEX_LOCK(xmap->cmutex);
         if((oid = mmtree_find(xmap->tree, xmap->state->qwait, id, &n)) > 0)
         {
-            mmtree_set_data(xmap->tree, xmap->state->qwait, oid, ++n);
+            mmtree_set_data(xmap->tree, oid, ++n);
         }
         MUTEX_UNLOCK(xmap->cmutex);
     }
@@ -525,26 +528,26 @@ int xmap_new_task(XMAP *xmap, int id)
 int xmap_over_task(XMAP *xmap, int id)
 {
     unsigned int oid = 0;
-    int ret = 0, n = -1;
+    int ret = -1, n = -1;
 
     if(xmap && id)
     {
         MUTEX_LOCK(xmap->cmutex);
         if((oid = mmtree_find(xmap->tree, xmap->state->qwait, id, &n)) > 0)
         {
-            if(--n == 0)
+            if(++n == XM_HOST_MAX)
             {
                 mmtree_remove(xmap->tree, xmap->state->qwait, oid, NULL, NULL);
                 mmqueue_push(xmap->queue, xmap->state->qleft, id);
                 ret = db_del_data(xmap->db, id);
+                ret = 0;
             }
             else
             {
-                mmtree_set_data(xmap->tree, xmap->state->qwait, oid, --n);
+                mmtree_set_data(xmap->tree, oid, ++n);
             }
         }
-        ret = n;
-        MUTEX_LOCK(xmap->cmutex);
+        MUTEX_UNLOCK(xmap->cmutex);
     }
     return ret;
 }
