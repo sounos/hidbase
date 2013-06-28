@@ -371,7 +371,7 @@ int xmap_set_groupid(XMAP *xmap, int diskid, int groupid)
     int ret = -1;
 
     if(xmap && groupid > 0 && diskid > 0 
-            && diskid < xmap->state->disk_id_max)
+            && diskid <= xmap->state->disk_id_max)
     {
         MUTEX_LOCK(xmap->mutex);
         ret = xmap->disks[diskid].groupid = groupid;
@@ -387,7 +387,7 @@ int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
     char line[XM_PATH_MAX];
     int ret = -1, id = 0, n = 0;
 
-    if(xmap && ip && port > 0 && (n = sprintf(line, "%s:%u", ip, port)) > 0)
+    if(xmap && ip && port > 0 && (n = sprintf(line, "%s:%d", ip, port)) > 0)
     {
         MUTEX_LOCK(xmap->mutex);
         id = xmap->state->disk_id_max + 1;
@@ -399,7 +399,7 @@ int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
             xmap->disks[id].port = port;
             xmap->disks[id].groupid = -1;
             *groupid = XM_NO_GROUPID;
-            xmap->disks[ret].last = time(NULL);
+            xmap->disks[id].last = time(NULL);
         }
         else
         {
@@ -411,7 +411,10 @@ int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
                     xmap->disks[ret].groupid = -1;
                     *groupid = XM_NO_GROUPID;
                 }
-                if(xmap->disks[ret].groupid > 0) *groupid = xmap->disks[ret].groupid; 
+                if(xmap->disks[ret].groupid > 0) 
+                {
+                    *groupid = xmap->disks[ret].groupid; 
+                }
             }
         }
         MUTEX_UNLOCK(xmap->mutex);

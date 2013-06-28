@@ -439,6 +439,7 @@ void traced_update_metainfo(DBHEAD *xhead, char *ip, int port,
 
     if((diskid = xmap_diskid(xmap, ip, port, gid)) > 0)
     {
+        ACCESS_LOGGER(logger, "disks[%d][%s:%d]  group[%d]", diskid, ip, port, *gid);
         if(*gid == XM_NO_GROUPID)
         {
             memcpy(&session, &(traced->session), sizeof(SESSION));
@@ -473,15 +474,18 @@ int traced_try_request(CONN *conn, DBHEAD *xhead, XMSETS *xsets, int num)
             sprintf(ip, "%u.%u.%u.%u", p[0], p[1], p[2], p[3]);
             if((xconn = traced->getconn(traced, gid)))
             {
+                ACCESS_LOGGER(logger, "TASK{cmd:%d qid:%d key:%llu gid:%d size:%d} on remote[%s:%d] local[%s:%d] via %d", xhead->cmd, xhead->qid, (uint64_t)xhead->id, gid, xhead->ssize, xconn->remote_ip, xconn->remote_port, xconn->local_ip, xconn->local_port, xconn->fd);
                 xconn->wait_estate(xconn);
                 xconn->save_header(xconn, xhead, sizeof(DBHEAD));
                 ret = traced_req_handler(xconn);
             }
             else
             {
+                sess.groupid = gid;
                 xconn = traced->newconn(traced, -1, -1, ip, port, &sess);
                 if(xconn)
                 {
+                    ACCESS_LOGGER(logger, "TRANS{cmd:%d qid:%d key:%llu gid:%d size:%d} on remote[%s:%d] local[%s:%d] via %d", xhead->cmd, xhead->qid, (uint64_t)xhead->id, gid, xhead->ssize, xconn->remote_ip, xconn->remote_port, xconn->local_ip, xconn->local_port, xconn->fd);
                     xconn->wait_estate(xconn);
                     xconn->save_header(xconn, xhead, sizeof(DBHEAD));
                     ret = traced->newtransaction(traced, xconn, xhead->index);
@@ -722,7 +726,8 @@ int traced_packet_handler(CONN *conn, CB_DATA *packet)
         {
             httpd_over_handler(xhead->index, xhead->id);
         }
-        if(!conn->groupid) conn->over_session(conn);
+        if(conn->groupid) conn->over_session(conn);
+        else conn->close(conn);
     }
     return ret;
 }
@@ -742,7 +747,8 @@ int traced_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *ch
             httpd_out_handler(xhead->index, chunk->data, chunk->ndata);
             ret = 0;
         }
-        if(!conn->groupid) conn->over_session(conn);
+        if(conn->groupid) conn->over_session(conn);
+        else conn->close(conn);
     }
     return ret;
 }
@@ -803,7 +809,7 @@ int traced_oob_handler(CONN *conn, CB_DATA *oob)
 /* multicastd packet handler */
 int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
 {
-    int ret = -1, gid = -1, total = 0, status = -1;
+    int ret = -1, gid = -6, total = 0, status = -1;
     DBHEAD *resp = NULL, xhead = {0};
     SESSION sess = {0};
     CONN *xconn = NULL;
@@ -812,7 +818,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
             && resp->status == DBASE_STATUS_OK)
     {
         traced_update_metainfo(resp, conn->remote_ip, resp->port, &gid, &total, &status);
-        ACCESS_LOGGER(logger, "Found{cmd:%d qid:%d key:%llu gid:%d size:%d} on %s:%d", resp->cmd, resp->qid, (uint64_t)resp->id, gid, resp->size, conn->remote_ip, resp->port);
+        ACCESS_LOGGER(logger, "Found{cmd:%d qid:%d key:%llu gid:%d size:%d} on host[%s:%d]", resp->cmd, resp->qid, (uint64_t)resp->id, gid, resp->size, conn->remote_ip, resp->port);
         //check task over
         memcpy(&xhead, resp, sizeof(DBHEAD));
         xhead.cmd = 0;
@@ -836,6 +842,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
         {
             if((xconn = traced->getconn(traced, gid)))
             {
+                ACCESS_LOGGER(logger, "TASK{cmd:%d qid:%d key:%llu gid:%d size:%d} on remote[%s:%d] local[%s:%d] via %d", xhead.cmd, xhead.qid, (uint64_t)xhead.id, gid, xhead.ssize, xconn->remote_ip, xconn->remote_port, xconn->local_ip, xconn->local_port, xconn->fd);
                 xconn->wait_estate(xconn);
                 xconn->save_header(xconn, &xhead, sizeof(DBHEAD));
                 ret = traced_req_handler(xconn);
@@ -844,10 +851,11 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
             {        
                 memcpy(&sess, &(traced->session), sizeof(SESSION));
                 sess.ok_handler = traced_req_handler;
+                sess.groupid = gid;
                 xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, &sess);
                 if(xconn)
                 {
-                    ACCESS_LOGGER(logger, "TRANS{cmd:%d qid:%d key:%llu gid:%d size:%d} on %s:%d", xhead.cmd, xhead.qid, (uint64_t)xhead.id, gid, xhead.ssize, conn->remote_ip, resp->port);
+                    ACCESS_LOGGER(logger, "TRANS{cmd:%d qid:%d key:%llu gid:%d size:%d} on remote[%s:%d] local[%s:%d] via %d", xhead.cmd, xhead.qid, (uint64_t)xhead.id, gid, xhead.ssize, xconn->remote_ip, xconn->remote_port, xconn->local_ip, xconn->local_port, xconn->fd);
                     xconn->wait_estate(xconn);
                     xconn->save_header(xconn, &xhead, sizeof(DBHEAD));
                     ret = traced->newtransaction(traced, xconn, xhead.index);
