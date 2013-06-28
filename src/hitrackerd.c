@@ -61,7 +61,7 @@ static void *http_headers_map = NULL;
 static void *logger = NULL;
 static XMAP *xmap = NULL;
 static int query_wait_time = 200000;
-static int query_timeout = 1000000;
+static int query_timeout = 10000000;
 static char *dbprefix = "/mdb/";
 static int ndbprefix = 5;
 static int group_conns_limit = 16;
@@ -182,7 +182,7 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
             xhead.ssize = ndata;
             xhead.size = ndata;
         }
-        ACCESS_LOGGER(logger, "READY_REQUIRE{%s %s qid:%d key:%llu length:%d group[%d]} from %s:%d ", http_methods[http_req->reqid].e, http_req->path, xhead.qid, (uint64_t)(xhead.id), xhead.ssize, k, conn->remote_ip, conn->remote_port);
+        ACCESS_LOGGER(logger, "HTTP_REQ{%s %s key:%llu length:%d from %s:%d via %d", http_methods[http_req->reqid].e, http_req->path, (uint64_t)(xhead.id), xhead.ssize, conn->remote_ip, conn->remote_port, conn->fd);
         ret = traced_local_handler(conn, &xhead);
     }
     return ret;
@@ -519,15 +519,16 @@ int traced_local_handler(CONN *conn, DBHEAD *xhead)
                 gid = multicasts[k].groupid;
                 if((xconn = multicastd->getconn(multicastd, gid))) 
                 {
-                    ACCESS_LOGGER(logger, "SEND_REQUIRE{qid:%d key:%llu length:%d group[%d][%s:%d fd:%d]} from %s:%d ", qid, (uint64_t)(xhead->id), xhead->size, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
+                    ACCESS_LOGGER(logger, "SEND_CASTS{qid:%d key:%llu length:%d multicasts[%d][%s:%d fd:%d]} from %s:%d ", qid, (uint64_t)(xhead->id), xhead->ssize, k, xconn->remote_ip, xconn->remote_port, xconn->fd, conn->remote_ip, conn->remote_port);
                     xconn->push_chunk(xconn, xhead, sizeof(DBHEAD));
                     xconn->over(xconn);
                     ret = 0;
                 }
                 else
                 {
-                    ACCESS_LOGGER(logger, "NO_CONN{qid:%d key:%llu length:%d group[%d] from %s:%d}", qid, (uint64_t)(xhead->id), xhead->size, k, conn->remote_ip, conn->remote_port);
+                    ACCESS_LOGGER(logger, "NO_CONN{qid:%d key:%llu length:%d multicasts[%d]} from %s:%d", qid, (uint64_t)(xhead->id), xhead->size, k, conn->remote_ip, conn->remote_port);
                     xmap_reset_meta(xmap, qid);
+                    return conn->close(conn);
                 }
             }
             else
@@ -548,6 +549,7 @@ int traced_local_handler(CONN *conn, DBHEAD *xhead)
         else
         {
             //timeout wait
+            ACCESS_LOGGER(logger, "WAIT_TASK{qid:%d key:%llu length:%d } from %s:%d ", xhead->qid, (uint64_t)(xhead->id), xhead->ssize, conn->remote_ip, conn->remote_port);
             conn->wait_evtimeout(conn, query_wait_time);
         }
     }
@@ -660,7 +662,7 @@ int traced_req_handler(CONN *conn)
     char *block = NULL;
     int ret = -1;
 
-    if(conn && conn->header.ndata > 0 && (xhead = (DBHEAD *)(conn->header.data)))
+    if(conn && conn->header.ndata > 0 && (xhead = (DBHEAD *)(conn->header.data)) && xhead->cmd)
     {
         if(xhead->ssize > 0 && xmap_cache_info(xmap, xhead->cid, &block) > 0 && block)
         { 
@@ -782,7 +784,7 @@ int traced_timeout_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA 
     if(conn)
     {
         conn->over_cstate(conn);
-        return conn->over(conn);
+        return conn->close(conn);
     }
     return -1;
 }
@@ -801,7 +803,7 @@ int traced_oob_handler(CONN *conn, CB_DATA *oob)
 /* multicastd packet handler */
 int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
 {
-    int ret = -1, gid = 0, total = 0, status = -1;
+    int ret = -1, gid = -1, total = 0, status = -1;
     DBHEAD *resp = NULL, xhead = {0};
     SESSION sess = {0};
     CONN *xconn = NULL;
@@ -829,14 +831,13 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                 xhead.size = 0;
                 break;
         }
-        //fprintf(stdout, "%s::%d cmd:%d|%d/%d/%d/%d\r\n", __FILE__, __LINE__, resp->cmd, DBASE_RESP_REQUIRE, xhead.cmd, DBASE_REQ_SET, DBASE_REQ_GET);
         if((xhead.cmd == DBASE_REQ_GET && total == 1)//check first request 
             || xhead.cmd == DBASE_REQ_SET)
         {
             if((xconn = traced->getconn(traced, gid)))
             {
                 xconn->wait_estate(xconn);
-                xconn->save_cache(xconn, &xhead, sizeof(DBHEAD));
+                xconn->save_header(xconn, &xhead, sizeof(DBHEAD));
                 ret = traced_req_handler(xconn);
             }
             else
@@ -846,6 +847,7 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                 xconn = traced->newconn(traced, -1, -1, conn->remote_ip, resp->port, &sess);
                 if(xconn)
                 {
+                    ACCESS_LOGGER(logger, "TRANS{cmd:%d qid:%d key:%llu gid:%d size:%d} on %s:%d", xhead.cmd, xhead.qid, (uint64_t)xhead.id, gid, xhead.ssize, conn->remote_ip, resp->port);
                     xconn->wait_estate(xconn);
                     xconn->save_header(xconn, &xhead, sizeof(DBHEAD));
                     ret = traced->newtransaction(traced, xconn, xhead.index);
@@ -920,8 +922,8 @@ int multicastd_timeout_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_D
 
     if(conn)
     {
-        //conn->over_cstate(conn);
-        //return conn->over(conn);
+        conn->over_cstate(conn);
+        return conn->over(conn);
     }
     return -1;
 }

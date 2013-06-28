@@ -14,7 +14,7 @@
 #include "xmap.h"
 #include "logger.h"
 #include "mutex.h"
-#include "db.h"
+#include "cdb.h"
 #include "mtrie.h"
 #include "mmqueue.h"
 #include "mmtrie.h"
@@ -97,7 +97,7 @@ XMAP *xmap_init(char *basedir)
 
     if(basedir && (xmap = (XMAP *)xmm_mnew(sizeof(XMAP))))
     {
-        xmap->mtrie = mtrie_init();
+        //xmap->mtrie = mtrie_init();
         MUTEX_INIT(xmap->mutex);
         /* logger */
         sprintf(path, "%s/%s", basedir, "xmap.log");        
@@ -116,7 +116,7 @@ XMAP *xmap_init(char *basedir)
         xmap->queue = mmqueue_init(path);
         /* db */
         sprintf(path, "%s/%s", basedir, "cache/");
-        xmap->db = db_init(path, DB_USE_MMAP);
+        xmap->db = cdb_init(path, CDB_USE_MMAP);
         /* state */
         sprintf(path, "%s/%s", basedir, "xmap.state");
         if((xmap->stateio.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
@@ -335,32 +335,6 @@ int xmap_over_meta(XMAP *xmap, int qid, int diskid, int *status)
     return ret;
 }
 
-/* check host exists */
-int xmap_check_host(XMAP *xmap, char *ip, int port)
-{
-    char host[XM_PATH_MAX];
-    int ret = 0, nhost = 0;
-
-    if(xmap && ip && port  && (nhost = sprintf(host, "%s:%d", ip, port)) > 0)
-    {
-        ret = mtrie_get(xmap->mtrie, host, nhost);
-    }
-    return ret;
-}
-
-/* add host */
-int xmap_add_host(XMAP *xmap, char *ip, int port, int val)
-{
-    char host[XM_PATH_MAX];
-    int ret = 0, nhost = 0;
-
-    if(xmap && ip && port && (nhost = sprintf(host, "%s:%d", ip, port)) > 0)
-    {
-        ret = mtrie_add(xmap->mtrie, host, nhost, val);
-    }
-    return ret;
-}
-
 /* return diskid */
 int xmap_set_disk(XMAP *xmap, MDISK *disk)
 {
@@ -455,7 +429,7 @@ int xmap_truncate_block(XMAP *xmap, int ndata, char **block)
         MUTEX_LOCK(xmap->cmutex);
         if(mmqueue_pop(xmap->queue, xmap->state->qleft, &id) < 0)
             id = ++(xmap->state->id_wait);
-        if((*block = db_truncate_block(xmap->db, id, ndata)))
+        if((*block = cdb_truncate_block(xmap->db, id, ndata)))
         {
             mmtree_try_insert(xmap->tree, xmap->state->qwait, id, 0, NULL);
         }
@@ -476,7 +450,7 @@ int xmap_cache_info(XMAP *xmap, int id, char **block)
 
     if(xmap && id > 0 && id <= xmap->state->id_wait)
     {
-        ret = db_exists_block(xmap->db, id, block);
+        ret = cdb_exists_block(xmap->db, id, block);
     }
     return ret;
 }
@@ -488,7 +462,7 @@ int xmap_cache_len(XMAP *xmap, int id)
 
     if(xmap && id)
     {
-        ret = db_get_data_len(xmap->db, id);
+        ret = cdb_get_data_len(xmap->db, id);
         //FATAL_LOGGER(xmap->logger, "get_data_len(%d) => %d", id, ret);
     }
     return ret;
@@ -501,7 +475,7 @@ int xmap_read_cache(XMAP *xmap, int id, char *data)
 
     if(xmap && id && data)
     {
-        ret = db_read_data(xmap->db, id, data);
+        ret = cdb_read_data(xmap->db, id, data);
     }
     return ret;
 }
@@ -539,7 +513,7 @@ int xmap_over_task(XMAP *xmap, int id)
             {
                 mmtree_remove(xmap->tree, xmap->state->qwait, oid, NULL, NULL);
                 mmqueue_push(xmap->queue, xmap->state->qleft, id);
-                ret = db_del_data(xmap->db, id);
+                ret = cdb_del_data(xmap->db, id);
                 ret = 0;
             }
             else
@@ -568,7 +542,7 @@ int xmap_drop_cache(XMAP *xmap, int id)
             mmtree_remove(xmap->tree, xmap->state->qwait, oid, NULL, NULL);
             mmqueue_push(xmap->queue, xmap->state->qleft, id);
         }
-        ret = db_del_data(xmap->db, id);
+        ret = cdb_del_data(xmap->db, id);
         //FATAL_LOGGER(xmap->logger, "del_data(%d) => %d", id, ret);
     }
     return ret;
@@ -579,13 +553,18 @@ void xmap_clean(XMAP *xmap)
 {
     if(xmap)
     {
+        WARN_LOGGER(xmap->logger, "Ready clean tree[%p]", xmap->tree);
         mmtree_close(xmap->tree);
+        WARN_LOGGER(xmap->logger, "Ready clean tree64[%p]", xmap->tree64);
         mmtree64_close(xmap->tree64);
+        WARN_LOGGER(xmap->logger, "Ready clean queue[%p]", xmap->queue);
         mmqueue_clean(xmap->queue);
+        WARN_LOGGER(xmap->logger, "Ready clean kmap[%p]", xmap->kmap);
         mmtrie_clean(xmap->kmap);
-        mtrie_clean(xmap->mtrie);
-        db_reset(xmap->db);
-        db_clean(xmap->db);
+        WARN_LOGGER(xmap->logger, "Ready reset db[%p]", xmap->db);
+        cdb_reset(xmap->db);
+        WARN_LOGGER(xmap->logger, "Ready clean db[%p]", xmap->db);
+        cdb_clean(xmap->db);
         if(xmap->diskio.map) 
         {
             munmap(xmap->diskio.map, xmap->diskio.size);
@@ -616,6 +595,7 @@ void xmap_clean(XMAP *xmap)
             close(xmap->stateio.fd);
             xmap->stateio.fd = 0;
         }
+        WARN_LOGGER(xmap->logger, "Ready clean mutex[%p]", xmap->mutex);
         MUTEX_DESTROY(xmap->mutex);
         MUTEX_DESTROY(xmap->cmutex);
         LOGGER_CLEAN(xmap->logger);
