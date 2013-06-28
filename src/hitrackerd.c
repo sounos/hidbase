@@ -60,7 +60,8 @@ static dictionary *dict = NULL;
 static void *http_headers_map = NULL;
 static void *logger = NULL;
 static XMAP *xmap = NULL;
-static int query_wait_time = 100000;
+static int query_wait_time = 200000;
+static int query_timeout = 1000000;
 static char *dbprefix = "/mdb/";
 static int ndbprefix = 5;
 static int group_conns_limit = 16;
@@ -363,9 +364,7 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
             {
                 p = chunk->data;
                 end = chunk->data + chunk->ndata;
-                //fprintf(stdout, "%s::%d request:%s\n", __FILE__, __LINE__, p);
                 if(http_argv_parse(p, end, &httpRQ) == -1)goto err_end;
-                //fprintf(stdout, "%s::%d OK\n", __FILE__, __LINE__);
             }
         }
 err_end: 
@@ -374,6 +373,7 @@ err_end:
     return ret;
 }
 
+/* evtimeout handler */
 int httpd_evtimeout_handler(CONN *conn)
 {
     int ret = -1, n = 0, status = -1;
@@ -382,6 +382,7 @@ int httpd_evtimeout_handler(CONN *conn)
 
     if(conn && (xhead = (DBHEAD *)(conn->header.data)))
     {
+        conn->over_evstate(conn);
         if((n = xmap_check_meta(xmap, xhead->qid, &status, &xsets)) > 0
                 && status == XM_STATUS_FREE)
         {
@@ -389,11 +390,6 @@ int httpd_evtimeout_handler(CONN *conn)
             {
                 ret = traced_try_request(conn, xhead, &xsets, n);
             }
-        }
-        else
-        {
-            conn->wait_evtimeout(conn, query_wait_time);
-            //conn->close(conn);
         }
     }
     return ret;
@@ -515,10 +511,9 @@ int traced_local_handler(CONN *conn, DBHEAD *xhead)
         xhead->qid = qid;
         xhead->index = conn->index;
         conn->save_header(conn, xhead, sizeof(DBHEAD));
-        //fprintf(stdout, "%d:%d\n", qid, status);
         if(status == XM_STATUS_FREE)
         {
-            if(n < 1)
+            if(n != XM_HOST_MAX)
             {
                 k = DBKMASK(xhead->id);
                 gid = multicasts[k].groupid;
@@ -548,6 +543,7 @@ int traced_local_handler(CONN *conn, DBHEAD *xhead)
                     ret = 0;
                 }
             }
+            conn->set_timeout(conn, query_timeout);
         }
         else
         {

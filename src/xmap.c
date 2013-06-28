@@ -544,7 +544,7 @@ int xmap_over_task(XMAP *xmap, int id)
             }
             else
             {
-                mmtree_set_data(xmap->tree, oid, ++n);
+                mmtree_set_data(xmap->tree, oid, n);
             }
         }
         MUTEX_UNLOCK(xmap->cmutex);
