@@ -283,6 +283,7 @@
                         j = 1;
                         for(x in disks)
                         {
+                            var ip = disks[x]['ip'];
                             var path = disks[x]['disk'];
                             var port = disks[x]['sport'];
                             var limit = disks[x]['limit'];
@@ -312,9 +313,7 @@
                             html += "<option value='1' "+s1+">mmap存储</option>";
                             html += "</select>";
                             html += "&nbsp;&nbsp;";
-                            html += "数据量限制:<input type=text name='limit' value='"+limit+"' size=16>";
-                            html += "&nbsp;&nbsp;";
-                            html += "端口:[<span class='ndisk'>"+port+"</span>]";
+                            html += "虚拟磁盘:[<span class='ndisk'>"+ip+':'+port+"</span>]";
                             html += "&nbsp;&nbsp;";
                             html += "路径:[<span class='ndisk'>"+path+"</span>]";
                             html += "&nbsp;&nbsp;";
