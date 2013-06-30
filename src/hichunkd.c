@@ -882,7 +882,6 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                             disk->left = (uint64_t)fs.f_bfree * (uint64_t)fs.f_bsize;
                             disk->all = (uint64_t)fs.f_blocks * (uint64_t)fs.f_bsize;
                             disk->modtime = xdb->state->xdisks[i].modtime;
-                            strcpy(disk->disk, xdb->state->xdisks[i].disk);
                             disk->nmasks = xdb->state->xdisks[i].nmasks;
                             if(disk->nmasks > 0)
                             {

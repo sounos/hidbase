@@ -299,7 +299,7 @@
                             var s0 = "", s1 = "";
                             if(mode == 0) s0 = "selected";
                             if(mode == 1) s1 = "selected";
-                            osel.options[j++] = new Option(path+":"+port, x);
+                            osel.options[j++] = new Option(ip+":"+port, x);
                             html += "<li class='ltab' onmousemove=\"onDiv(this, 'ltab-selected')\"";
                             html += " onmouseout=\"outDiv(this, 'ltab')\" >";
                             html += "<form style='' action='javascript:void(0)' ";
@@ -313,9 +313,7 @@
                             html += "<option value='1' "+s1+">mmap存储</option>";
                             html += "</select>";
                             html += "&nbsp;&nbsp;";
-                            html += "虚拟磁盘:[<span class='ndisk'>"+ip+':'+port+"</span>]";
-                            html += "&nbsp;&nbsp;";
-                            html += "路径:[<span class='ndisk'>"+path+"</span>]";
+                            html += "磁盘:[<span class='ndisk'>"+ip+':'+port+"</span>]";
                             html += "&nbsp;&nbsp;";
                             html += "剩余:[<span class='ndisk'>"+dscale+"%</span>:"+mleft+"M/"+mall+"M]";
                             html += "&nbsp;&nbsp;";
@@ -580,27 +578,6 @@
                     &nbsp;&nbsp;
                     <input type=submit value='查询'>
                     <hr>
-                    </td>
-                    </form>
-                </tr>
-
-                <tr>
-                    <form style='' action='javascript:void(0)' onsubmit="return DiskEdit(this);" >
-                    <td class='disktitle' valign=top width=100%>
-                        <input type=hidden name=op value=1>
-                           <select name='mode' >
-                            <option value='-1' >存储模式</option>
-                            <option value='0' selected>磁盘存储</option>
-                            <option value='1' >mmap存储</option>
-                           </select>
-                            路径:<input type=text name='path' value='' size=64 >
-                            &nbsp;
-                            端口:<input type=text name='port' value='' size=8 >
-                            &nbsp;
-                            数据量限制:<input type=text name='limit' value='0' size=16 >
-                            &nbsp;
-                            <input type=submit value='添加'>
-                            <hr>
                     </td>
                     </form>
                 </tr>

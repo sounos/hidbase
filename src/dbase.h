@@ -83,7 +83,6 @@ typedef struct _MDISK
     uint32_t modtime;
     uint32_t last;
     uint32_t masks[DBASE_MASK_MAX];
-    char     disk[DBASE_PATH_MAX];
 }MDISK;
 typedef struct _DBMETA
 {

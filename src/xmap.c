@@ -434,7 +434,7 @@ int xmap_list_disks(XMAP *xmap, char *out)
         for(i = 1; i <= xmap->state->disk_id_max; i++) 
         {
             s = (unsigned char *)&(xmap->disks[i].ip);
-            p += sprintf(p, "'%d':{'ip':'%d.%d.%d.%d','sport':'%d','mode':'%d','disk':'%s','total':'%u','left':'%llu','all':'%llu', 'limit':'%llu'", i, s[0], s[1], s[2], s[3], xmap->disks[i].port, xmap->disks[i].mode, xmap->disks[i].disk, xmap->disks[i].total, LLU(xmap->disks[i].left), LLU(xmap->disks[i].all), LLU(xmap->disks[i].limit));
+            p += sprintf(p, "'%d':{'ip':'%d.%d.%d.%d','sport':'%d','mode':'%d','total':'%u','left':'%llu','all':'%llu', 'limit':'%llu'", i, s[0], s[1], s[2], s[3], xmap->disks[i].port, xmap->disks[i].mode, xmap->disks[i].total, LLU(xmap->disks[i].left), LLU(xmap->disks[i].all), LLU(xmap->disks[i].limit));
             if(xmap->disks[i].nmasks > 0)
             {
                 p += sprintf(p, ", 'masks':{");
