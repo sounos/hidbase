@@ -119,7 +119,7 @@ XDBASE *xdbase_init(char *basedir, int mode)
         xdbase->state->mode = mode;
         /* initialize disks */
         MUTEX_INIT(xdbase->mutex); 
-        for(i = 0; i < DBASE_MASK; i++)
+        for(i = 0; i < DBASE_MASK_MAX; i++)
         {
             if(xdbase->state->xdisks[i].status > 0)
             {
@@ -150,15 +150,15 @@ int xdbase_add_disk(XDBASE *xdbase, int port, off_t limit, int mode, char *disk)
     int diskid = -1, x = 0, n = 0;
     char path[XDB_PATH_MAX];
 
-    if(xdbase && disk && xdbase->state && xdbase->state->nxdisks < DBASE_MASK)
+    if(xdbase && disk && xdbase->state && xdbase->state->nxdisks < DBASE_MASK_MAX)
     {
         MUTEX_LOCK(xdbase->mutex);
         n = strlen(disk);
         if((x = mmtrie_get(MMTR(xdbase->map), disk, n)) < 1)
         {
             x = 0;
-            while(x < DBASE_MASK && xdbase->state->xdisks[x].status)++x; 
-            if(x < DBASE_MASK && xdbase->state->xdisks[x].status == 0)
+            while(x < DBASE_MASK_MAX && xdbase->state->xdisks[x].status)++x; 
+            if(x < DBASE_MASK_MAX && xdbase->state->xdisks[x].status == 0)
             {
                 mmtrie_add(MMTR(xdbase->map), disk, n, x+1);
                 strcpy(xdbase->state->xdisks[x].disk, disk);
@@ -206,7 +206,7 @@ int xdbase_set_disk_limit(XDBASE *xdbase, int diskid, off_t limit)
 {
     int ret = -1;
 
-    if(xdbase && diskid >= 0 && diskid < DBASE_MASK)
+    if(xdbase && diskid >= 0 && diskid < DBASE_MASK_MAX)
     {
         MUTEX_LOCK(xdbase->mutex);
         if(xdbase->state && xdbase->state->nxdisks > 0 
@@ -226,7 +226,7 @@ int xdbase_set_disk_mode(XDBASE *xdbase, int diskid, int mode)
     char path[XDB_PATH_MAX];
     int ret = -1;
 
-    if(xdbase && diskid >= 0 && diskid < DBASE_MASK)
+    if(xdbase && diskid >= 0 && diskid < DBASE_MASK_MAX)
     {
         MUTEX_LOCK(xdbase->mutex);
         if(xdbase->state && xdbase->state->nxdisks > 0 
@@ -252,7 +252,7 @@ int xdbase_del_disk(XDBASE *xdbase, int diskid)
 {
     int ret = -1;
 
-    if(xdbase && diskid >= 0 && diskid < DBASE_MASK)
+    if(xdbase && diskid >= 0 && diskid < DBASE_MASK_MAX)
     {
         MUTEX_LOCK(xdbase->mutex);
         if(xdbase->state && xdbase->state->nxdisks > 0 
@@ -294,11 +294,11 @@ int xdbase_add_mask(XDBASE *xdbase, int diskid, int mask)
     unsigned char *ch = NULL;
     int ret = -1, i = 0;
 
-    if(xdbase && diskid >= 0 && diskid < DBASE_MASK)
+    if(xdbase && diskid >= 0 && diskid < DBASE_MASK_MAX)
     {
         MUTEX_LOCK(xdbase->mutex);
         if(xdbase->state && xdbase->state->xdisks[diskid].status > 0
-                && xdbase->state->xdisks[diskid].nmasks < DBASE_MASK)
+                && xdbase->state->xdisks[diskid].nmasks < DBASE_MASK_MAX)
         {
             ch = (unsigned char *)&mask;
             if((i = DBKMASK(ch[3])) >= 0 && xdbase->state->xdisks[diskid].masks[i].mask_ip == 0)
@@ -322,7 +322,7 @@ int xdbase_del_mask(XDBASE *xdbase, int diskid, int mask)
     unsigned char *ch = NULL;
     int ret = -1, i = 0;
 
-    if(xdbase && diskid >= 0 && diskid < DBASE_MASK)
+    if(xdbase && diskid >= 0 && diskid < DBASE_MASK_MAX)
     {
         MUTEX_LOCK(xdbase->mutex);
         if(xdbase->state && xdbase->state->xdisks[diskid].status > 0
@@ -357,7 +357,7 @@ int xdbase_list_disks(XDBASE *xdbase, char *out)
         MUTEX_LOCK(xdbase->mutex);
         p += sprintf(p, "({'disklist':{");
         pp = p;
-        for(i = 0; i < DBASE_MASK; i++) 
+        for(i = 0; i < DBASE_MASK_MAX; i++) 
         {
             if(xdbase->state->xdisks[i].status 
                     && statvfs(xdbase->state->xdisks[i].disk, &fs) == 0)
@@ -368,7 +368,7 @@ int xdbase_list_disks(XDBASE *xdbase, char *out)
                 if(xdbase->state->xdisks[i].nmasks > 0)
                 {
                     p += sprintf(p, ", 'masks':{");
-                    for(j = 0; j < DBASE_MASK; j++)
+                    for(j = 0; j < DBASE_MASK_MAX; j++)
                     {
                         if(xdbase->state->xdisks[i].masks[j].mask_ip)
                         {
@@ -398,7 +398,7 @@ int xdbase__kid(XDBASE *xdbase, int diskid, int64_t key)
     char line[DBASE_LINE_MAX];
     int id = -1, n = 0;
 
-    if(xdbase && diskid >= 0 && diskid < DBASE_MASK 
+    if(xdbase && diskid >= 0 && diskid < DBASE_MASK_MAX 
         && xdbase->state->xdisks[diskid].status > 0 && xdbase->kmap)
     {
         n = sprintf(line, "%u/%llu", (unsigned int)diskid, ULL64(key));
@@ -412,7 +412,7 @@ int xdbase_kid(XDBASE *xdbase, int diskid, int64_t key)
 {
     int id = -1, x = 0, k = 0, root = 0;
 
-    if(xdbase && diskid >= 0 && diskid < DBASE_MASK 
+    if(xdbase && diskid >= 0 && diskid < DBASE_MASK_MAX 
         && xdbase->state->xdisks[diskid].status > 0 && xdbase->idmap)
     {
         if(xdbase->state->mode)
@@ -442,7 +442,7 @@ int xdbase__key__id(XDBASE *xdbase, int diskid, int64_t key)
     struct timeval tv = {0}, now = {0};
     char line[DBASE_LINE_MAX];
 
-    if(xdbase && diskid >= 0 && diskid < DBASE_MASK && xdbase->kmap 
+    if(xdbase && diskid >= 0 && diskid < DBASE_MASK_MAX && xdbase->kmap 
         && xdbase->state->xdisks[diskid].status > 0 
         && (n = sprintf(line, "%u/%llu", (unsigned int)diskid, ULL64(key))) > 0
         && (id = mmtrie_get(xdbase->kmap, line, n)) <= 0)
@@ -481,7 +481,7 @@ int xdbase_key_id(XDBASE *xdbase, int diskid, int64_t key)
     int id = -1, old = -1, x = 0, k = 0, root = 0, usec = 0;
     struct timeval tv = {0}, now = {0};
 
-    if(xdbase && diskid >= 0 && diskid < DBASE_MASK && xdbase->idmap 
+    if(xdbase && diskid >= 0 && diskid < DBASE_MASK_MAX && xdbase->idmap 
         && xdbase->state->xdisks[diskid].status > 0)
     {
         MUTEX_LOCK(xdbase->mutex);
@@ -540,7 +540,7 @@ int xdbase_add_data(XDBASE *xdbase, int diskid, int64_t key, char *data, int nda
     int ret = -1, id = 0;
     void *db = NULL;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK && data 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX && data 
             && xdbase->state->xdisks[diskid].status > 0 
             && (id = xdbase_key_id(xdbase, diskid, key)) > 0
             && (db = xdbase->state->xdisks[diskid].db))
@@ -555,7 +555,7 @@ int xdbase_set_data(XDBASE *xdbase, int diskid, int64_t key, char *data, int nda
 {
     int ret = -1, id = 0;
     void *db = NULL;
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK && data 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX && data 
             && xdbase->state->xdisks[diskid].status > 0
             && (db = xdbase->state->xdisks[diskid].db))
     {
@@ -575,7 +575,7 @@ int xdbase_update_data(XDBASE *xdbase, int diskid, int64_t key, char *data, int 
     BJSON rec = {0}, *record = &rec;
     void *db = NULL;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK && data 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX && data 
             && xdbase->state->xdisks[diskid].status > 0 
             && (id = xdbase_key_id(xdbase, diskid, key)) > 0
             && (db = xdbase->state->xdisks[diskid].db))
@@ -613,7 +613,7 @@ int xdbase_del_data(XDBASE *xdbase, int diskid, int64_t key)
     int ret = -1, id = 0;
     void *db = NULL;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX 
             && xdbase->state->xdisks[diskid].status > 0 
             && (id = xdbase_kid(xdbase, diskid, key)) > 0
             && (db = xdbase->state->xdisks[diskid].db))
@@ -629,7 +629,7 @@ int xdbase_qwait(XDBASE *xdbase, int diskid, char *chunk, int nchunk)
     void *wait = NULL, *db = NULL;
     int id = 0, ret = -1;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX 
             && xdbase->state->xdisks[diskid].status > 0 
             && (wait = xdbase->state->xdisks[diskid].wait)
             && (db = xdbase->state->xdisks[diskid].db))
@@ -655,7 +655,7 @@ int xdbase_qrelay(XDBASE *xdbase, int diskid, int id)
 {
     int ret = -1;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX 
             && xdbase->state->xdisks[diskid].status > 0
             && xdbase->state->xdisks[diskid].qrelay > 0) 
     {
@@ -676,7 +676,7 @@ int xdbase_work(XDBASE *xdbase, int diskid)
     DBHEAD *head = NULL;
     DBMETA *meta = NULL;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX 
             && xdbase->state->xdisks[diskid].status > 0 
             && (record = &(xdbase->state->xdisks[diskid].record))
             && (wait = xdbase->state->xdisks[diskid].wait)
@@ -786,7 +786,7 @@ int xdbase_get_data(XDBASE *xdbase, int diskid, int64_t key, char **data)
     int ret = -1, id = 0;
     void *db = NULL;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK && data 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX && data 
             && xdbase->state->xdisks[diskid].status > 0 
             && (id = xdbase_kid(xdbase, diskid, key)) > 0
             && (db = xdbase->state->xdisks[diskid].db))
@@ -801,7 +801,7 @@ void xdbase_free_data(XDBASE *xdbase, int diskid, char *data, int ndata)
 {
     void *db = NULL;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK && data 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX && data 
             && xdbase->state->xdisks[diskid].status > 0 
             && (db = xdbase->state->xdisks[diskid].db))
     {
@@ -816,7 +816,7 @@ int xdbase_read_data(XDBASE *xdbase, int diskid, int64_t key, char *data)
     int ret = -1, id = 0;
     void *db = NULL;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK && data 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX && data 
             && xdbase->state->xdisks[diskid].status > 0 
             && (id = xdbase_kid(xdbase, diskid, key)) > 0
             && (db = xdbase->state->xdisks[diskid].db))
@@ -832,7 +832,7 @@ int xdbase_get_data_len(XDBASE *xdbase, int diskid, int64_t key)
     int ret = -1, id = 0;
     void *db = NULL;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX 
             && xdbase->state->xdisks[diskid].status > 0 
             && (id = xdbase_kid(xdbase, diskid, key)) > 0
             && (db = xdbase->state->xdisks[diskid].db))
@@ -848,7 +848,7 @@ int xdbase_check_disk(XDBASE *xdbase, int diskid, int64_t key, int length)
     struct statvfs fs = {0};
     int ret = -1;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX 
             && xdbase->state->xdisks[diskid].status > 0 
             && statvfs(xdbase->state->xdisks[diskid].disk, &fs) == 0
             && length < (fs.f_bfree * fs.f_bsize - DBASE_LEFT_MAX)) 
@@ -864,7 +864,7 @@ int xdbase_bound(XDBASE *xdbase, int diskid, int count)
     void *db = NULL;
     int n = -1;
 
-    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK 
+    if(xdbase && xdbase->state && diskid >= 0 && diskid < DBASE_MASK_MAX 
             && xdbase->state->xdisks[diskid].status > 0 && count > 0 
             && (db = xdbase->state->xdisks[diskid].db))
     {
@@ -888,7 +888,7 @@ void xdbase_close(XDBASE *xdbase)
         LOGGER_CLEAN(xdbase->logger);
         if(xdbase->state)
         {
-            for(i = 0; i < DBASE_MASK; i++)
+            for(i = 0; i < DBASE_MASK_MAX; i++)
             {
                 //db_clean(PDB(xdbase->state->xdisks[i].wait));
                 db_clean(PDB(xdbase->state->xdisks[i].db));

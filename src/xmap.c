@@ -74,10 +74,10 @@ do                                                                              
 #define CHECK_XMDISKIO(ox, kid)                                                                 \
 do                                                                                              \
 {                                                                                               \
-    if(ox && kid >= ((off_t)ox->diskio.end/(off_t)sizeof(XMDISK)))                              \
+    if(ox && kid >= ((off_t)ox->diskio.end/(off_t)sizeof(MDISK)))                              \
     {                                                                                           \
         ox->diskio.old = ox->diskio.end;                                                        \
-        ox->diskio.end = (off_t)((kid/XM_DISK_BASE)+1)*(off_t)XM_DISK_BASE*(off_t)sizeof(XMDISK); \
+        ox->diskio.end = (off_t)((kid/XM_DISK_BASE)+1)*(off_t)XM_DISK_BASE*(off_t)sizeof(MDISK); \
         if(ftruncate(ox->diskio.fd, ox->diskio.end)) break;                                     \
         if(ox->diskio.map)                                                                      \
         {                                                                                       \
@@ -141,7 +141,7 @@ XMAP *xmap_init(char *basedir)
                 }
                 memset(xmap->state, 0, sizeof(XMSTATE));
             }
-            for(i = 0; i < DBASE_MASK; i++)
+            for(i = 0; i < DBASE_MASK_MAX; i++)
             {
                 if(xmap->state->masks[i].root == 0)
                     xmap->state->masks[i].root = mmtree64_new_tree(xmap->tree64);
@@ -152,14 +152,14 @@ XMAP *xmap_init(char *basedir)
         if((xmap->diskio.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
                 && fstat(xmap->diskio.fd, &st) == 0)
         {
-            if((xmap->diskio.map = mmap(NULL, sizeof(XMDISK) * XM_DISK_MAX, PROT_READ|PROT_WRITE,
+            if((xmap->diskio.map = mmap(NULL, sizeof(MDISK) * XM_DISK_MAX, PROT_READ|PROT_WRITE,
                             MAP_SHARED, xmap->diskio.fd, 0)) == NULL
                     || xmap->diskio.map == (void *)-1)
             {
                 FATAL_LOGGER(xmap->logger, "mmap disk:%s failed, %s", path, strerror(errno));
                 _exit(-1);
             }
-            xmap->disks = (XMDISK *)(xmap->diskio.map);
+            xmap->disks = (MDISK *)(xmap->diskio.map);
             xmap->diskio.end = st.st_size;
         }
         /* meta */
@@ -335,35 +335,6 @@ int xmap_over_meta(XMAP *xmap, int qid, int diskid, int *status)
     return ret;
 }
 
-/* return diskid */
-int xmap_set_disk(XMAP *xmap, MDISK *disk)
-{
-    unsigned char *ch = NULL;
-    char line[XM_PATH_MAX];
-    int ret = -1, id = 0, n = 0;
-
-    if(xmap && disk && disk->ip && disk->port > 0 
-            && (ch = (unsigned char *)&(disk->ip))
-            && (n = sprintf(line, "%u.%u.%u.%u:%u", 
-                    ch[0], ch[1], ch[2], ch[3], disk->port)) > 0)
-    {
-        MUTEX_LOCK(xmap->mutex);
-        id = xmap->state->disk_id_max + 1;
-        if((ret = mmtrie_add(xmap->kmap, line, n, id)) == id)
-        {
-            xmap->state->disk_id_max++;
-            CHECK_XMDISKIO(xmap,id);
-            xmap->disks[id].limit = disk->limit;
-            xmap->disks[id].free = disk->free;
-            xmap->disks[id].total = disk->total;
-            xmap->disks[id].modtime = disk->modtime;
-            xmap->disks[id].ip = disk->ip;
-            xmap->disks[id].port = disk->port;
-        }
-        MUTEX_UNLOCK(xmap->mutex);
-    }
-    return ret;
-}
 
 /* set groupid */
 int xmap_set_groupid(XMAP *xmap, int diskid, int groupid)
@@ -421,6 +392,74 @@ int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
     }
     return ret;
 }
+
+/* return diskid */
+int xmap_set_disk(XMAP *xmap, MDISK *disk)
+{
+    unsigned char *ch = NULL;
+    char line[XM_PATH_MAX];
+    int ret = -1, id = 0, n = 0;
+
+    if(xmap && disk && disk->ip && disk->port > 0 
+            && (ch = (unsigned char *)&(disk->ip))
+            && (n = sprintf(line, "%u.%u.%u.%u:%u", 
+                    ch[0], ch[1], ch[2], ch[3], disk->port)) > 0)
+    {
+        MUTEX_LOCK(xmap->mutex);
+        id = xmap->state->disk_id_max + 1;
+        if((ret = mmtrie_add(xmap->kmap, line, n, id)) == id)
+        {
+            xmap->state->disk_id_max++;
+            CHECK_XMDISKIO(xmap,id);
+        }
+        disk->groupid = xmap->disks[ret].groupid;
+        memcpy(&(xmap->disks[ret]), disk, sizeof(MDISK));
+        MUTEX_UNLOCK(xmap->mutex);
+    }
+    return ret;
+}
+
+
+/* lisk all disks */
+int xmap_list_disks(XMAP *xmap, char *out)
+{
+    int ret = -1, i = 0, j = 0;
+    char *p = NULL, *pp = NULL;
+    unsigned char *s = NULL;
+
+    if(xmap && (p = out) && xmap->state->disk_id_max > 0)
+    {
+        p += sprintf(p, "({'disklist':{");
+        pp = p;
+        for(i = 1; i <= xmap->state->disk_id_max; i++) 
+        {
+            s = (unsigned char *)&(xmap->disks[i].ip);
+            p += sprintf(p, "'%d':{'ip':'%d.%d.%d.%d','sport':'%d','mode':'%d','disk':'%s','total':'%u','left':'%llu','all':'%llu', 'limit':'%llu'", i, s[0], s[1], s[2], s[3], xmap->disks[i].port, xmap->disks[i].mode, xmap->disks[i].disk, xmap->disks[i].total, LLU(xmap->disks[i].left), LLU(xmap->disks[i].all), LLU(xmap->disks[i].limit));
+            if(xmap->disks[i].nmasks > 0)
+            {
+                p += sprintf(p, ", 'masks':{");
+                for(j = 0; j < xmap->disks[i].nmasks; j++)
+                {
+                    if(xmap->disks[i].masks[j])
+                    {
+                        s = ((unsigned char *)&(xmap->disks[i].masks[j]));
+                        if(j == (xmap->disks[i].nmasks - 1))
+                            p += sprintf(p, "'%d':'%d.%d.%d.%d'", j, s[0], s[1], s[2], s[3]);
+                        else
+                            p += sprintf(p, "'%d':'%d.%d.%d.%d', ", j, s[0], s[1], s[2], s[3]);
+                    }
+                }
+                p += sprintf(p, "}");
+            }
+            p += sprintf(p, "},");
+        }
+        if(p > pp) --p;
+        p += sprintf(p, "}})");
+        ret = p - out;
+    }
+    return ret;
+}
+
 
 /* truncate cache block */
 int xmap_truncate_block(XMAP *xmap, int ndata, char **block)

@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/statvfs.h>
 #include "stime.h"
 #include "base64.h"
 #include "base64chunkdhtml.h"
@@ -54,9 +55,9 @@ static dictionary *dict = NULL;
 static void *http_headers_map = NULL;
 static void *logger = NULL;
 static XDBASE *xdb = NULL;
-static SERVICE *dbs[DBASE_MASK];
-static DBTASK dbtasks[DBASE_MASK];
-static DBMASK dbmasks[DBASE_MASK];
+static SERVICE *dbs[DBASE_MASK_MAX];
+static DBTASK dbtasks[DBASE_MASK_MAX];
+static DBMASK dbmasks[DBASE_MASK_MAX];
 static char *public_multicast = "233.8.8.8";
 static int public_multicast_added = 0;
 static void *argvmap = NULL;
@@ -336,7 +337,7 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                         if(dbs[diskid]) 
                         {
                             dbs[diskid]->close(dbs[diskid]);
-                            for(j = 0; j < DBASE_MASK; j++)
+                            for(j = 0; j < DBASE_MASK_MAX; j++)
                             {
                                 if(dbmasks[j].diskid == diskid)
                                     chunkd_drop_mask(diskid, dbmasks[j].mask);
@@ -393,7 +394,7 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                             while(*p == '-' || (*p >= '0' && *p <= '9'))++p;
                         }
                     }
-                    if(diskid >= 0 && diskid <= DBASE_MASK)
+                    if(diskid >= 0 && diskid <= DBASE_MASK_MAX)
                     {
                         if(kid != 0)
                         {
@@ -721,7 +722,7 @@ void chunkd_task_handler(void *arg)
     SERVICE *s = NULL;
     int diskid = 0;
 
-    if((diskid = ((int)((long)arg) - 1)) >= 0 && diskid < DBASE_MASK)
+    if((diskid = ((int)((long)arg) - 1)) >= 0 && diskid < DBASE_MASK_MAX)
     {
         while(xdbase_work(xdb, diskid) > 0 && dbtasks[diskid].status > 0
             && (s = dbs[diskid]) && s->lock != 1)
@@ -782,7 +783,7 @@ int traced_packet_handler(CONN *conn, CB_DATA *packet)
                 case DBASE_REQ_APPEND:
                 {
                     diskid = dbmasks[DBKMASK(xhead->id)].diskid; 
-                    if(diskid >= 0 && diskid < DBASE_MASK && dbs[diskid])
+                    if(diskid >= 0 && diskid < DBASE_MASK_MAX && dbs[diskid])
                     {
                         //request new xhead->length space
                     }
@@ -848,9 +849,10 @@ int traced_oob_handler(CONN *conn, CB_DATA *oob)
 /* multicastd packet handler */
 int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
 {
-    int ret = -1, i = 0, mask = 0, diskid = 0;
+    int ret = -1, i = 0, mask = 0, diskid = 0, j = 0, x = 0, ip = 0;
     DBHEAD *xhead = NULL, resp = {0};
     char buf[HTTP_BUF_SIZE];
+    struct statvfs fs = {0};
     MDISK *disk = NULL;
 
     if(conn && packet && (xhead = (DBHEAD *)(packet->data)))
@@ -868,15 +870,31 @@ int multicastd_packet_handler(CONN *conn, CB_DATA *packet)
                     xhead = (DBHEAD *)buf;
                     xhead->cmd = DBASE_RESP_REPORT;
                     disk = (MDISK *)(buf + sizeof(DBHEAD));
-                    for(i = 0; i < DBASE_MASK; i++)
+                    for(i = 0; i < DBASE_MASK_MAX; i++)
                     {
-                        if(xdb->state->xdisks[i].status)
+                        if(xdb->state->xdisks[i].status
+                            && statvfs(xdb->state->xdisks[i].disk, &fs) == 0)
                         {
+                            disk->mode = xdb->state->xdisks[i].mode;
                             disk->port = xdb->state->xdisks[i].port;
                             disk->total = xdb->state->xdisks[i].total;
                             disk->limit = xdb->state->xdisks[i].limit;
-                            disk->free = xdb->state->xdisks[i].free;
+                            disk->left = (uint64_t)fs.f_bfree * (uint64_t)fs.f_bsize;
+                            disk->all = (uint64_t)fs.f_blocks * (uint64_t)fs.f_bsize;
                             disk->modtime = xdb->state->xdisks[i].modtime;
+                            strcpy(disk->disk, xdb->state->xdisks[i].disk);
+                            disk->nmasks = xdb->state->xdisks[i].nmasks;
+                            if(disk->nmasks > 0)
+                            {
+                                x = 0;
+                                for(j = 0; j < DBASE_MASK_MAX; j++)
+                                {
+                                    if((ip = xdb->state->xdisks[i].masks[j].mask_ip))
+                                    {
+                                        disk->masks[x++] = ip;
+                                    }
+                                }
+                            }
                             ++disk;
                         }
                     }
@@ -991,7 +1009,7 @@ int chunkd_drop_mask(int diskid, int mask)
     unsigned char *ch = (unsigned char *)&(mask);
     int k  = 0;
 
-    if(diskid >= 0 && diskid < DBASE_MASK && mask)
+    if(diskid >= 0 && diskid < DBASE_MASK_MAX && mask)
     {
         k = DBKMASK(ch[3]);
         multicastd->drop_multicast(multicastd, dbmasks[k].ip);
@@ -1074,14 +1092,14 @@ void multicastd_onrunning(SERVICE *service)
         /* db service */
         if(xdb->state && xdb->state->nxdisks > 0 && ndbs == 0) 
         {
-            for(i = 0; i < DBASE_MASK; i++)
+            for(i = 0; i < DBASE_MASK_MAX; i++)
             {
                 if(xdb->state->xdisks[i].status && dbs[i] == NULL)
                 {
                     chunkd_add_service(i, xdb->state->xdisks[i].port);
                     if(xdb->state->xdisks[i].nmasks > 0)
                     {
-                        for(j = 0; j < DBASE_MASK; j++)
+                        for(j = 0; j < DBASE_MASK_MAX; j++)
                         {
                             if(xdb->state->xdisks[i].masks[j].mask_ip)
                                 chunkd_add_mask(i, xdb->state->xdisks[i].masks[j].mask_ip);
@@ -1099,7 +1117,7 @@ void multicastd_onrunning(SERVICE *service)
 void cb_heartbeat_handler(void *arg)
 {
     int i = 0;
-    for(i = 0; i < DBASE_MASK; i++)
+    for(i = 0; i < DBASE_MASK_MAX; i++)
     {
         if(dbs[i] && dbtasks[i].status == 0)
         {
@@ -1303,9 +1321,9 @@ int sbase_initialize(SBASE *sbase, char *conf)
     */
     /* chunkd */
     public_multicast = iniparser_getstr(dict, "DBASE:public_multicast");
-    for(i = 0; i < DBASE_MASK; i++) dbmasks[i].diskid = -1;
-    memset(dbtasks, 0, DBASE_MASK * sizeof(DBTASK));
-    memset(dbs, 0, sizeof(SERVICE *) * DBASE_MASK);
+    for(i = 0; i < DBASE_MASK_MAX; i++) dbmasks[i].diskid = -1;
+    memset(dbtasks, 0, DBASE_MASK_MAX * sizeof(DBTASK));
+    memset(dbs, 0, sizeof(SERVICE *) * DBASE_MASK_MAX);
     mode = iniparser_getint(dict, "DBASE:mode", 0);
     if((p = iniparser_getstr(dict, "DBASE:basedir")) && (xdb = xdbase_init(p, mode)))
     {

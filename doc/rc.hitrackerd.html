@@ -1,6 +1,6 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
     <head>
-    <title>Trackerd Monitor</title>
+    <title>Master Monitor</title>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <style>
         body.IE_M7, body.IE_M8, body.Win6{font-family:"Segoe UI", Tahoma, Verdana, Arial;}
@@ -17,23 +17,22 @@
         }
         form{margin:0px;display: inline}
         #mainframe{position:relative;background-color:#FEFEFE;width:100%;height:100%;}
-        #task{position:absolute;background-color:#F4FBFF;display:inline;
+        #disk{position:absolute;background-color:#F4FBFF;display:inline;
             border:1px solid #81BEF7;padding:0px;left:0px;top:0px;width:100%;height:100%;}
-        .tasklist{position:relative;padding:0px; background-color:#D0E9F7;height:100%;}
-        .tasktitle{position:relative;background-color:#2F5FA1;color:#c0c0c0; height:30px;}
-        #taskselect{position:relative;background-color:#D0E9F7;color:#2F5FA1;width:100%;}
-        #tasklists .tasklists{position:relative;background-color:#F4FBFF;color:#2F5FA1;}
-        .task-title{background-color:#2F5FA1;color:#c0c0c0;height:30px;width:100%;}
+        .disklist{position:relative;padding:0px; background-color:#D0E9F7;width:100%}
+        .disktitle{position:relative;background-color:#2F5FA1;color:#c0c0c0; height:30px;}
+        .viewtitle{position:relative;background-color:#2F5FA1;color:#c0c0c0; height:30px;}
+        .infoview{position:relative;padding:0px; background-color:#D0E9F7;width:100%}
+        #disksview{position:relative;background-color:#D0E9F7;color:#2F5FA1;width:100%;}
+        .disk-title{background-color:#2F5FA1;color:#c0c0c0;height:30px;width:100%;}
         .ultab{list-style:none;padding:0;margin:0;width:100%;}
         .ltabname{cursor:pointer;font-size:12pt;}
         .ltab{background-color:#D0E9F7;cursor: pointer;width:100%;}
         .ltab-selected{background-color:#F4FBFF;cursor: pointer;width:100%;}
         .lfname{cursor: pointer;}
-        .ltask{background-color:#F4FBFF;cursor: pointer;}
-        .ltask-selected{background-color:#D0E9F7;cursor: pointer;}
-        #nodeform{position:absolute;width:700px;background-color:#ffffff;
-            border:1px solid #81BEF7;padding:10px;z-index:99;overflow:auto;display:none;}
-        #taskform{position:absolute;width:500px;height:50px;background-color:#ffffff;
+        .ldisk{background-color:#F4FBFF;cursor: pointer;}
+        .ldisk-selected{background-color:#D0E9F7;cursor: pointer;}
+        #diskform{position:absolute;width:500px;height:50px;background-color:#ffffff;
             border:1px solid #81BEF7;padding-top:10px;padding-left:6px;font-size:12pt;
             color:#2F5FA1;z-index:99;overflow:auto;display:none;}
         .eadd{color:#5FB404;font-size:13pt;font-weight:bolder;cursor:pointer;}
@@ -41,9 +40,10 @@
         .edelete{color:#B4045F;font-size:13pt;font-weight:bolder;cursor:pointer;}
         .eview{color:#0000ff;font-size:13pt;font-weight:bolder;cursor:pointer;}
         .closetxt{cursor:pointer;font-size:10pt;color:#cccccc;text-align:right;}
-        .ntask{display:inline;color:red;font-size:12pt;}
+        .ndisk{display:inline;color:red;font-size:12pt;}
         </style>
         <script language='javascript'>
+            var oTimer = null;
             var chradd = '✚', chrfold = '►', chrtree = '▼', chredit='✎', chrdel='✘', chrview = '☜ ';
             var base64EncodeChars = 
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -249,49 +249,371 @@
                 }
                 return xmlhttp;
             }
-            //list 
-            function uploadfile(form)
+            //close form
+            function CloseThis(element)
+            {
+                element.parentNode.parentNode.style.display = "none";
+            }
+            function ClearDisks()
+            {
+                var disksview = document.getElementById('disksview');
+                disksview.innerHTML = "";
+                return true;
+            }
+            //list Disks 
+            function ListDisks(txt)
+            {
+                var disksview = document.getElementById('disksview');
+                var disks = null;
+                var res = null;
+                var html = "", css = "";
+                if(txt && (res = eval(txt)) && disksview)
+                {
+                    disksview.innerHTML = "";
+                    if((disks = res['disklist']))
+                    {
+                        //var osel = document.getElementById('disks');
+                        var osel = document.forms['dataview']['disks'];
+                        var j = 0;
+                        for(j = osel.length - 1; j > 0; j--)
+                        {
+                            osel.remove(j);
+                        }
+                        var html = "<ul class='ultab'>";
+                        j = 1;
+                        for(x in disks)
+                        {
+                            var path = disks[x]['disk'];
+                            var port = disks[x]['sport'];
+                            var limit = disks[x]['limit'];
+                            var mode = disks[x]['mode'];
+                            var total = disks[x]['total'];
+                            var dleft = disks[x]['left'];
+                            var mleft = parseInt(dleft/(1024 * 1024));
+                            var dall = disks[x]['all'];
+                            var mall = parseInt(dall/(1024 * 1024));
+                            var dscale = parseInt((dleft/dall) * 100);
+                            var masks = null;
+                            var nmasks = 0;
+                            var s0 = "", s1 = "";
+                            if(mode == 0) s0 = "selected";
+                            if(mode == 1) s1 = "selected";
+                            osel.options[j++] = new Option(path+":"+port, x);
+                            html += "<li class='ltab' onmousemove=\"onDiv(this, 'ltab-selected')\"";
+                            html += " onmouseout=\"outDiv(this, 'ltab')\" >";
+                            html += "<form style='' action='javascript:void(0)' ";
+                            html += " onsubmit='return DiskEdit(this);'>";
+                            html += "<input type=hidden name='op' value='3'>";
+                            html += "<input type=hidden name='diskid' value='"+x+"'>";
+                            html += "编号:[<span class='ndisk'>"+x+"</span>]";
+                            html += "&nbsp;&nbsp;";
+                            html += "<select name='mode'>";
+                            html += "<option value='0' "+s0+">磁盘存储</option>";
+                            html += "<option value='1' "+s1+">mmap存储</option>";
+                            html += "</select>";
+                            html += "&nbsp;&nbsp;";
+                            html += "数据量限制:<input type=text name='limit' value='"+limit+"' size=16>";
+                            html += "&nbsp;&nbsp;";
+                            html += "端口:[<span class='ndisk'>"+port+"</span>]";
+                            html += "&nbsp;&nbsp;";
+                            html += "路径:[<span class='ndisk'>"+path+"</span>]";
+                            html += "&nbsp;&nbsp;";
+                            html += "剩余:[<span class='ndisk'>"+dscale+"%</span>:"+mleft+"M/"+mall+"M]";
+                            html += "&nbsp;&nbsp;";
+                            html += "总数:[<span class='ndisk'>"+total+"</span>]";
+                            html += "&nbsp;&nbsp;";
+                            if((masks = disks[x]['masks']))
+                            {
+                                html += "<select name='masklist' onchange='MaskDel(this.form)'>";
+                                html += "<option value='-1' selected>删除分组</option>";
+                                for(k in masks)
+                                {
+                                    html += "<option value='"+masks[k]+"'>"+masks[k]+"</option>";
+                                }
+                                html += "</select>";
+                                html += "&nbsp;&nbsp;";
+                            }
+                            html += "添加分组:<input type=text name='mask' size=16 >";
+                            html += "<input type=button value='添加' onclick='MaskAdd(this.form)'>";
+                            html += "&nbsp;&nbsp;";
+                            html += "<span class='edelete' title='Delete' ";
+                            html += " onclick=\"DiskDel("+x+")\">"+chrdel+"</span>";
+                            html += "</form></li>";
+                        }
+                        html += "</ul>";
+                        disksview.innerHTML = html;
+                    }
+                    //alert(txt);
+                }
+            }
+            //item view 
+            function itemview(form)
             {
                 var xmlHttp = null;
-                if(form && (xmlHttp = CreateXMLHTTP()) != null)
+                var diskid = -1;
+                var key = form['id'].value;
+                var uri = form['url'].value;
+                var o = null;
+                var argv = "";
+                if((o = form['disks'])) diskid = o.options[o.selectedIndex].value;
+                var ox = document.getElementById('jsonview');
+                if(diskid >= 0 && (uri != "" || key != ""))
                 {
-                    var id = form['id'].value;
-                    var f = document.getElementById("file");
-                    var file = f.files.item(0).getAsBinary();
-                    xmlHttp.open('PUT', '/mdb/'+id, true);
-                    xmlHttp.setRequestHeader('Content-type', 'text/plain');
+                    ox.innerHTML = "";
+                    argv = "op=5&diskid="+diskid;
+                    if(key != "") argv += "&id="+key;
+                    if(uri != "") argv += "&url="+base64encode(uri);
+                    argv += "&rand="+Math.random();
+                }
+                if(argv != "" && (xmlHttp = CreateXMLHTTP()) != null)
+                {
+                    xmlHttp.open('POST', '/', true);
                     xmlHttp.setRequestHeader("Content-Length", argv.length);
+                    xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
                     xmlHttp.onreadystatechange=function()
                     {
                         if(xmlHttp.readyState==4)
                         {
                             if(xmlHttp.status == 200)
                             {
-                                ListNodes(xmlHttp.responseText);
+                                var html = "<textarea cols=160 rows=30>"+xmlHttp.responseText+"</textarea>";
+                                ox.innerHTML = html;
                             }
-
                         }
                     }
-                    xmlHttp.send(data);
+                    xmlHttp.send(argv);
                 }
             }
+            //list 
+            function list()
+            {
+                var xmlHttp = null;
+                if((xmlHttp = CreateXMLHTTP()) != null)
+                {
+                    var argv = "op=4&rand="+Math.random();
+                    //alert(argv);
+                    xmlHttp.open('POST', '/', true);
+                    xmlHttp.setRequestHeader("Content-Length", argv.length);
+                    xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+                    xmlHttp.onreadystatechange=function()
+                    {
+                        if(xmlHttp.readyState==4)
+                        {
+                            if(xmlHttp.status == 200)
+                            {
+                                ListDisks(xmlHttp.responseText);
+                            }
+                        }
+                    }
+                    xmlHttp.send(argv);
+                }
+            }
+            //add
+            function DiskEdit(form)
+            {
+                var xmlHttp = null;
+                var path = "";
+                var port = 0;
+                var limit = 0;
+                var diskid = -1;
+                var o = null;
+                var argv = "";
+
+                if(form && (op = form['op'].value) > 0)
+                {
+                    if(op == 1 && (path = form['path'].value) != "" 
+                        && (port = form['port'].value) > 0 
+                        && (o = form['mode']) && (mode = o.options[o.selectedIndex].value) >= 0
+                        && (limit = form['limit'].value) >= 0)
+                    {
+                        argv = "op=1&path="+path+"&port="+port+"&mode="+mode+"&limit="+limit;
+                    }
+                    else if(op == 2 && (diskid = form['diskid'].value) > 0)
+                    {
+                        argv = "op=2&diskid="+diskid;
+                    }
+                    else if(op == 3 && (diskid = form['diskid'].value) > 0 
+                        && (limit = form['limit'].value) >= 0
+                        && (o = form['mode']) && (mode = o.options[o.selectedIndex].value) >= 0)
+                    {
+                        argv = "op=3&diskid="+diskid+"&limit="+limit+"&mode="+mode;
+                    }
+                    ClearDisks();
+                }else alert("请输入正确的数据");
+                if(argv && (xmlHttp = CreateXMLHTTP()) != null)
+                {
+                    argv += "&rand="+Math.random();
+                    xmlHttp.open('POST', '/', true);
+                    xmlHttp.setRequestHeader("Content-Length", argv.length);
+                    xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+                    xmlHttp.onreadystatechange=function()
+                    {
+                        if(xmlHttp.readyState==4)
+                        {
+                            if(xmlHttp.status == 200)
+                            {
+                                if(op == 1)
+                                {
+                                    form['path'].value = "";
+                                    form['port'].value = "";
+                                    form['limit'].value = 0;
+                                }
+                                ListDisks(xmlHttp.responseText);
+                            }
+                        }
+                    }
+                    xmlHttp.send(argv);
+                }
+            }
+            //del node
+            function DiskDel(diskid)
+            {
+                
+                var argv = "op=2&diskid="+diskid;
+                if(argv && confirm("确认删除该任务?") == true && (xmlHttp = CreateXMLHTTP()) != null)
+                {
+                    ClearDisks();
+                    //alert(argv);
+                    xmlHttp.open('POST', '/', true);
+                    xmlHttp.setRequestHeader("Content-Length", argv.length);
+                    xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+                    xmlHttp.onreadystatechange=function()
+                    {
+                        if(xmlHttp.readyState==4)
+                        {
+                            if(xmlHttp.status == 200)
+                            {
+                                ListDisks(xmlHttp.responseText);
+                            }
+                        }
+                    }
+                    xmlHttp.send(argv);
+                }
+            }
+            //add mask
+            function MaskAdd(form)
+            {
+                var diskid = 0;
+                var mask = "";
+                if(form && (diskid = form['diskid'].value) >= 0 && (mask = form['mask'].value))
+                {
+                    var argv = "op=6&diskid="+diskid+"&mask="+mask;
+                    if(argv && (xmlHttp = CreateXMLHTTP()) != null)
+                    {
+                        //alert(argv);
+                        xmlHttp.open('POST', '/', true);
+                        xmlHttp.setRequestHeader("Content-Length", argv.length);
+                        xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+                        xmlHttp.onreadystatechange=function()
+                        {
+                            if(xmlHttp.readyState==4)
+                            {
+                                if(xmlHttp.status == 200)
+                                {
+                                    ClearDisks();
+                                    ListDisks(xmlHttp.responseText);
+                                }
+                                else
+                                {
+                                    alert("添加分组["+mask+"]失败!");
+                                }
+                            }
+                        }
+                        xmlHttp.send(argv);
+                    }
+                }
+            }
+            //del mask
+            function MaskDel(form)
+            {
+                var diskid = 0;
+                var mask = "";
+                var o = null;
+                if(form && (diskid = form['diskid'].value) >= 0 && (o = form['masklist']) 
+                    && (mask = o.options[o.selectedIndex].value) != -1)
+                {
+                    var argv = "op=7&diskid="+diskid+"&mask="+mask;
+                    var r = confirm("确认删除该分组["+mask+"]?");
+                    if(r != true) o.options[0].selected = true;
+                    if(argv && r == true && (xmlHttp = CreateXMLHTTP()) != null)
+                    {
+                        //alert(argv);
+                        xmlHttp.open('POST', '/', true);
+                        xmlHttp.setRequestHeader("Content-Length", argv.length);
+                        xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+                        xmlHttp.onreadystatechange=function()
+                        {
+                            if(xmlHttp.readyState==4)
+                            {
+                                if(xmlHttp.status == 200)
+                                {
+                                    ClearDisks();
+                                    ListDisks(xmlHttp.responseText);
+                                }
+                                else
+                                {
+                                    alert("删除分组["+mask+"]失败!");
+                                }
+                            }
+                        }
+                        xmlHttp.send(argv);
+                    }
+                }
+            }
+            list();
         </script>
     </head>
     <!-- <body onload='javascript:loadInit();'> -->
+        <!-- <body align=center onload="loadState()"> -->
     <body align=center >
     <div id='mainframe'>
-    <div id='task'>
-        <div id=task-header ></div>
+    <div id='disk'>
+        <div id=disk-header ></div>
+            <table width=100% height=100% cellspacing=0 border=0 valign=top align=left >
+                <tr>
+                    <form name='dataview' style='' action='javascript:void(0)' onsubmit="return itemview(this);" >
+                    <td  class='viewtitle' valign=top align=left >
+                    <input type=hidden name='op' value='5'>
+                    <select name='disks' ><option value=-1 >选择存储节点</option></select>
+                    &nbsp;&nbsp;
+                    ID:<input type=text name='id' size=32 >
+                    或者URL:<input type=text name='url' size=96 >
+                    &nbsp;&nbsp;
+                    <input type=submit value='查询'>
+                    <hr>
+                    </td>
+                    </form>
+                </tr>
+
+                <tr>
+                    <form style='' action='javascript:void(0)' onsubmit="return DiskEdit(this);" >
+                    <td class='disktitle' valign=top width=100%>
+                        <input type=hidden name=op value=1>
+                           <select name='mode' >
+                            <option value='-1' >存储模式</option>
+                            <option value='0' selected>磁盘存储</option>
+                            <option value='1' >mmap存储</option>
+                           </select>
+                            路径:<input type=text name='path' value='' size=64 >
+                            &nbsp;
+                            端口:<input type=text name='port' value='' size=8 >
+                            &nbsp;
+                            数据量限制:<input type=text name='limit' value='0' size=16 >
+                            &nbsp;
+                            <input type=submit value='添加'>
+                            <hr>
+                    </td>
+                    </form>
+                </tr>
+                <tr>
+                    <td class='disklist' valign=top align=left >
+                    <div id='disksview'></div>
+                    <hr>
+                    <div id='jsonview' ></div>
+                    </td>
+                </tr>
+        </table>
     </div>
-    </div>
-    <div id='nodeform'>
-    <!--
-        <form name='fileform' action='javascript:void(0);' onsubmit='return upload(this);'>
-            <input type=input name='id' value='' ><br>
-            <input type=file name='file' value=1 >
-            <input type=submit value='上传'>
-    </form>
-    -->
     </div>
     </div>
 </body>

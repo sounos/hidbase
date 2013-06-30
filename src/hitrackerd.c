@@ -37,6 +37,38 @@
 #ifndef LL
 #define LL(x) ((long long int)x)
 #endif
+#define E_OP_ADD         0x01
+#define E_OP_DEL         0x02
+#define E_OP_UPDATE      0x03
+#define E_OP_LIST        0x04
+#define E_OP_GET         0x05
+#define E_OP_ADD_MASK    0x06
+#define E_OP_DEL_MASK    0x07
+static char *e_argvs[] =
+{
+        "op",
+#define E_ARGV_OP        0
+        "id",
+#define E_ARGV_ID        1
+        "diskid",
+#define E_ARGV_DISKID    2
+        "path",
+#define E_ARGV_PATH      3
+        "port",
+#define E_ARGV_PORT      4
+        "limit",
+#define E_ARGV_LIMIT     5
+        "mode",
+#define E_ARGV_MODE      6
+        "url",
+#define E_ARGV_URL       7
+        "keys",
+#define E_ARGV_KEYS      8
+        "mask"
+#define E_ARGV_MASK      9
+};
+#define  E_ARGV_NUM      10
+static void *argvmap = NULL;
 typedef struct _MGROUP
 {
     int bits;
@@ -51,7 +83,7 @@ static SBASE *sbase = NULL;
 static SERVICE *httpd = NULL;
 static SERVICE *trackerd = NULL;
 static SERVICE *traced = NULL;
-static MGROUP multicasts[DBASE_MASK];
+static MGROUP multicasts[DBASE_MASK_MAX];
 static char *multicast_network = "234.8.8";
 static int  multicast_port = 2345;
 static int  multicast_limit = 8;
@@ -347,9 +379,12 @@ err_end:
 /*  data handler */
 int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chunk)
 {
+    char *p = NULL, *end = NULL, *path = NULL, *url = NULL, *keys = NULL, *key = NULL, 
+        buf[HTTP_BUF_SIZE], line[HTTP_LINE_SIZE];
     HTTP_REQ httpRQ = {0}, *http_req = NULL;
-    char *p = NULL, *end = NULL;
-    int ret = -1;
+    int ret = -1, id = 0, op = 0, n = 0, i = 0, j = 0, diskid = -1, nout = 0,
+        port = 0, mode = -1, x = 0, mask = 0;
+    off_t limit = -1;
 
     if(conn && packet && cache && chunk && chunk->ndata > 0)
     {
@@ -365,7 +400,71 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                 p = chunk->data;
                 end = chunk->data + chunk->ndata;
                 if(http_argv_parse(p, end, &httpRQ) == -1)goto err_end;
+                for(i = 0; i < httpRQ.nargvs; i++)
+                {
+                    if(httpRQ.argvs[i].nk > 0 && (n = httpRQ.argvs[i].k) > 0
+                            && (p = (httpRQ.line + n)))
+                    {
+                        if((id = (mtrie_get(argvmap, p, httpRQ.argvs[i].nk) - 1)) >= 0
+                                && httpRQ.argvs[i].nv > 0
+                                && (n = httpRQ.argvs[i].v) > 0
+                                && (p = (httpRQ.line + n)))
+                        {
+                            switch(id)
+                            {
+                                case E_ARGV_OP :
+                                    op = atoi(p);
+                                    break;
+                                case E_ARGV_ID :
+                                    key = p;
+                                    break;
+                                case E_ARGV_KEYS:
+                                    keys = p;
+                                    break;
+                                case E_ARGV_DISKID:
+                                    diskid = atoi(p);
+                                    break;
+                                case E_ARGV_PORT:
+                                    port = atoi(p);
+                                    break;
+                                case E_ARGV_MODE:
+                                    mode = atoi(p);
+                                    break;
+                                case E_ARGV_LIMIT:
+                                    limit = (off_t) atoll(p);
+                                    break;
+                                case E_ARGV_PATH:
+                                    path = p;
+                                    break;
+                                case E_ARGV_URL:
+                                    url = p;
+                                    break;
+                                case E_ARGV_MASK:
+                                    mask = (int)inet_addr(p);
+                                    break;
+                            }
+                        }
+                    }
+                }
+                if(op == E_OP_LIST) goto disklist;
             }
+        }
+        if(ret >= 0) return conn->over(conn);
+        else goto err_end;
+disklist:
+        if((ret = xmap_list_disks(xmap, buf)) > 0)
+        {
+            p = line;
+            p += sprintf(p, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\n"
+                    "Content-Type: text/html;charset=%s\r\n",
+                    ret, http_default_charset);
+            if((n = http_req->headers[HEAD_GEN_CONNECTION]) > 0)
+                p += sprintf(p, "Connection: %s\r\n", (http_req->hlines + n));
+            p += sprintf(p, "Connection:Keep-Alive\r\n");
+            p += sprintf(p, "\r\n");
+            conn->push_chunk(conn, line, (p - line));
+            conn->push_chunk(conn, buf, ret);
+            return conn->over(conn);
         }
 err_end: 
         ret = conn->push_chunk(conn, HTTP_BAD_REQUEST, strlen(HTTP_BAD_REQUEST));
@@ -959,7 +1058,7 @@ void multicastd_onrunning(SERVICE *service)
             public_groupid = multicastd->addgroup(multicastd, public_multicast, multicast_port,
                     public_multicast_limit, &(multicastd->session));
         }
-        for(i = 0; i < DBASE_MASK; i++)
+        for(i = 0; i < DBASE_MASK_MAX; i++)
         {
             if(multicasts[i].groupid < 1)
             {
@@ -991,7 +1090,7 @@ void multicastd_heartbeat_handler(void *arg)
 int sbase_initialize(SBASE *sbase, char *conf)
 {
     char *s = NULL, *p = NULL;
-    int n = 0;
+    int i = 0, n = 0;
 
     if((dict = iniparser_new(conf)) == NULL)
     {
@@ -1008,6 +1107,15 @@ int sbase_initialize(SBASE *sbase, char *conf)
     {
         fprintf(stderr, "Initialize http_headers_map failed,%s", strerror(errno));
         _exit(-1);
+    }
+    /* argvmap */
+    if((argvmap = mtrie_init()) == NULL)_exit(-1);
+    else
+    {
+        for(i = 0; i < E_ARGV_NUM; i++)
+        {
+            mtrie_add(argvmap, e_argvs[i], strlen(e_argvs[i]), i+1);
+        }
     }
     /* initialize xmap */
     if((p = iniparser_getstr(dict, "XMAP:basedir")))
@@ -1232,7 +1340,7 @@ int sbase_initialize(SBASE *sbase, char *conf)
     multicast_port = iniparser_getint(dict, "MULTICASTD:multicast_port", 2345);
     multicast_limit = iniparser_getint(dict, "MULTICASTD:multicast_limit", 64);
     multicastd->session.multicast_ttl = iniparser_getint(dict, "MULTICASTD:multicast_ttl", 4);
-    memset(multicasts, 0, sizeof(MGROUP) * DBASE_MASK);
+    memset(multicasts, 0, sizeof(MGROUP) * DBASE_MASK_MAX);
     return (sbase->add_service(sbase, httpd) | sbase->add_service(sbase, trackerd)
             | sbase->add_service(sbase, traced) | sbase->add_service(sbase, multicastd));
 }
@@ -1314,6 +1422,7 @@ int main(int argc, char **argv)
     sbase->clean(sbase);
     if(http_headers_map) http_headers_map_clean(http_headers_map);
     if(dict)iniparser_free(dict);
+    if(argvmap)mtrie_clean(argvmap);
     if(logger){LOGGER_CLEAN(logger);}
     if(httpd_index_html_code) free(httpd_index_html_code);
     if(xmap) xmap_clean(xmap);

@@ -1533,7 +1533,7 @@ int dbio_set(DBIO *dbio, char *multicast_network, int port)
         memset(dbio, 0, sizeof(DBIO));
         strcpy(dbio->multicast_network, multicast_network);
         tv.tv_sec = 0;tv.tv_usec = DBASE_TIMEOUT;
-        for(i = 0; i < DBASE_MASK; i++)
+        for(i = 0; i < DBASE_MASK_MAX; i++)
         {
             if((fd = dbio->casts[i].rfd = socket(AF_INET, SOCK_DGRAM, 0)) > 0)
             {
@@ -1762,7 +1762,7 @@ int dbio_recv(DBIO *dbio, int no, int64_t id)
 int dbio_read(DBIO *dbio, int64_t id)
 {
     socklen_t rsa_len = sizeof(struct sockaddr);
-    int mask = id % DBASE_MASK, ret = -1, no = 0;
+    int mask = id % DBASE_MASK_MAX, ret = -1, no = 0;
     struct sockaddr_in rsa;
     DBHEAD head; DBRESP resp;
 
@@ -1860,7 +1860,7 @@ int dbio_close(DBIO *dbio)
 
     if(dbio)
     {
-        for(i = 0; i < DBASE_MASK; i++)
+        for(i = 0; i < DBASE_MASK_MAX; i++)
         {
             if(dbio->casts[i].fd > 0) 
             {

@@ -29,23 +29,23 @@ extern "C" {
 #define DBASE_REQ_REQUIRE     0x000b
 #define DBASE_RESP_REQUIRE    0x100b
 #define DBASE_CMD_BASE        0x1000
-#define DBASE_PATH_MAX        1024
+#define DBASE_PATH_MAX        256
 #define DBASE_META_PATH       0x01
 #define DBASE_CHUNK_SIZE      4194304
 #define DBASE_HOST_MAX        64
 #define DBASE_STATUS_OK       0
 #define DBASE_STATUS_ERR      -1
 #define DBASE_MM_BASE         4096
-#define DBASE_MASK            96
+#define DBASE_MASK_MAX            96
 #define DBASE_TIMEOUT         1000000
 #define DBASE_LEFT_MAX        2147483648
 #define BJSON_BASE            65536
 #define BJSON_DEEP            256
 #define DBASE_TTL_MAX         32
 #define DBASE_LINE_MAX        256
-#define DBKMASK(xxx) (((uint64_t)xxx)%((uint64_t)DBASE_MASK))
+#define DBKMASK(xxx) (((uint64_t)xxx)%((uint64_t)DBASE_MASK_MAX))
 #ifndef LLU
-#define LLU(mmm) ((uint64_t)mmm)
+#define LLU(mmm) ((unsigned long long int)mmm)
 #endif
     /*    0    Restricted to the same host. Won't be output by any interface.
           1    Restricted to the same subnet. Won't be forwarded by a router.
@@ -71,12 +71,19 @@ typedef struct _DBHEAD
 }DBHEAD;
 typedef struct _MDISK
 {
+    ushort   port;
+    ushort   mode;
+    ushort   nmasks;
+    ushort   groupid;
     int      ip;
-    int      port;
-    uint32_t modtime;
     uint32_t total;
+    uint64_t left;
+    uint64_t all;
     uint64_t limit;
-    uint64_t free;
+    uint32_t modtime;
+    uint32_t last;
+    uint32_t masks[DBASE_MASK_MAX];
+    char     disk[DBASE_PATH_MAX];
 }MDISK;
 typedef struct _DBMETA
 {
@@ -151,7 +158,7 @@ typedef struct _DBNODE
 /* DB IO */
 typedef struct _DBIO
 {
-    DBCAST casts[DBASE_MASK];
+    DBCAST casts[DBASE_MASK_MAX];
     char multicast_network[DBASE_IP_MAX];
     DBNODE nodes[DBASE_NODES_MAX];
     int status;

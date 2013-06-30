@@ -2,7 +2,7 @@
 #define _XDBASE_H_
 #include "mutex.h"
 #include "dbase.h"
-#define XDB_PATH_MAX        1024
+#define XDB_PATH_MAX        256
 #define XDB_BUF_SIZE        1024
 #define XDB_KEYS_MAX        256
 #define XDB_MODE_MMAP       0x01
@@ -24,15 +24,14 @@ typedef struct _XDISK
     uint32_t   qleft;
     uint32_t   qrelay;
     uint32_t   qid;
-    BJSON   record;
-    void    *db;
-    void    *wait;
-    void    *cache;
-    MUTEX   *mutex;
+    BJSON      record;
+    void       *db;
+    void       *wait;
+    void       *cache;
+    MUTEX      *mutex;
     uint64_t   limit;
-    uint64_t   free;
-    char    disk[XDB_PATH_MAX];
-    XMASK   masks[DBASE_MASK];
+    char       disk[XDB_PATH_MAX];
+    XMASK      masks[DBASE_MASK_MAX];
 }XDISK;
 
 typedef struct _XDBSTATE
@@ -45,7 +44,7 @@ typedef struct _XDBSTATE
     int     bits;
     off_t   op_total;
     off_t   op_slow;
-    XDISK   xdisks[DBASE_MASK];
+    XDISK   xdisks[DBASE_MASK_MAX];
 }XDBSTATE;
 typedef struct _XDBIO
 {

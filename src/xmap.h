@@ -31,17 +31,6 @@ typedef struct _XMMETA
     uint32_t modtime;
     uint32_t disks[XM_HOST_MAX];
 }XMMETA;
-typedef struct _XMDISK
-{
-    short    groupid;
-    ushort   port;
-    int      ip;
-    uint32_t modtime;
-    uint32_t total;
-    uint64_t limit;
-    uint64_t free;
-    time_t   last;
-}XMDISK;
 typedef struct _XMASK
 {
     int total;
@@ -55,7 +44,7 @@ typedef struct _XMSTATE
     int qwait;
     int id_wait;
     int qleft;
-    XMASK masks[DBASE_MASK];
+    XMASK masks[DBASE_MASK_MAX];
 }XMSTATE;
 typedef struct _XMIO
 {
@@ -73,7 +62,7 @@ typedef struct _XMAP
     XMIO metaio;
     XMSTATE *state;
     XMMETA *metas;
-    XMDISK *disks;
+    MDISK *disks;
     void *mutex;
     void *cmutex;
     void *tree64;
@@ -102,6 +91,8 @@ int xmap_set_disk(XMAP *xmap, MDISK *disk);
 int xmap_set_groupid(XMAP *xmap, int diskid, int groupid);
 /* get diskid */
 int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid);
+/* lisk all disks */
+int xmap_list_disks(XMAP *xmap, char *out);
 /* truncate block */
 int xmap_truncate_block(XMAP *xmap, int len, char **block);
 /* get cache info*/
