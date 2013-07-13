@@ -419,6 +419,22 @@ int xmap_set_disk(XMAP *xmap, MDISK *disk)
     return ret;
 }
 
+/* get disk host */
+int xmap_get_disk_host(XMAP *xmap, int diskid, char *ip, int *port)
+{
+    unsigned char *ch = NULL;
+    int ret = -1, n = 0;
+
+    if(xmap && diskid && ip && port && diskid > 0
+        && diskid <= xmap->state->disk_id_max)
+    {
+        ch = (unsigned char *)&(xmap->disks[diskid].ip);
+        n = sprintf(ip, "%u.%u.%u.%u", ch[0], ch[1], ch[2], ch[3]);
+        *port = xmap->disks[diskid].port;
+        ret = 0;
+    }
+    return ret;
+}
 
 /* lisk all disks */
 int xmap_list_disks(XMAP *xmap, char *out)

@@ -37,13 +37,11 @@
 #ifndef LL
 #define LL(x) ((long long int)x)
 #endif
-#define E_OP_ADD         0x01
-#define E_OP_DEL         0x02
-#define E_OP_UPDATE      0x03
-#define E_OP_LIST        0x04
+#define E_OP_LIST        0x01
+#define E_OP_SET_MODE    0x02
+#define E_OP_ADD_MASK    0x03
+#define E_OP_DROP_MASK   0x04
 #define E_OP_GET         0x05
-#define E_OP_ADD_MASK    0x06
-#define E_OP_DEL_MASK    0x07
 static char *e_argvs[] =
 {
         "op",
@@ -379,12 +377,14 @@ err_end:
 /*  data handler */
 int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chunk)
 {
-    char *p = NULL, *end = NULL, *path = NULL, *url = NULL, *keys = NULL, *key = NULL, 
-        buf[HTTP_BUF_SIZE], line[HTTP_LINE_SIZE];
+    char *p = NULL, *pp = NULL, *end = NULL, *path = NULL, *url = NULL, *keys = NULL,
+        *key = NULL, buf[HTTP_BUF_SIZE], line[HTTP_LINE_SIZE], ip[HTTP_IP_MAX];
     HTTP_REQ httpRQ = {0}, *http_req = NULL;
-    int ret = -1, id = 0, op = 0, n = 0, i = 0, j = 0, diskid = -1, nout = 0,
-        port = 0, mode = -1, x = 0, mask = 0;
+    int ret = -1, id = 0, op = 0, n = 0, i = 0, diskid = -1, 
+        port = 0, mode = -1, mask = 0, num = 0;
     off_t limit = -1;
+    DBHEAD xhead = {0};
+    CONN *xconn = NULL;
 
     if(conn && packet && cache && chunk && chunk->ndata > 0)
     {
@@ -440,13 +440,51 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                                     url = p;
                                     break;
                                 case E_ARGV_MASK:
-                                    mask = (int)inet_addr(p);
+                                    if((pp = strchr(p, '/')))
+                                    {
+                                        *pp++ = 0;
+                                        mask = (int)inet_addr(p);
+                                        num = atoi(pp);
+                                    }
                                     break;
                             }
                         }
                     }
                 }
-                if(op == E_OP_LIST) goto disklist;
+                if(diskid > 0 && xmap_get_disk_host(xmap, diskid, ip, &port) == 0)
+                {
+                    switch(op)
+                    {
+                        case E_OP_DROP_MASK:
+                            xhead.cmd = DBASE_REQ_DROP_MASK;
+                        break;
+                        case E_OP_SET_MODE:
+                            if(mode >= 0)
+                            {
+                                xhead.cmd = DBASE_REQ_DROP_MASK;
+                                xhead.ssize = mode;
+                            }
+                        break;
+                        case E_OP_ADD_MASK:
+                            if(mask && num > 0)
+                            {
+                                xhead.cmd = DBASE_REQ_DROP_MASK;
+                                xhead.ip = mask;
+                                xhead.ssize = num;
+                            }
+                        break;
+                    }
+                     
+                    if(xhead.cmd && (xconn = traced->newconn(traced, -1, -1, ip, port, NULL)))
+                    {
+                        xconn->push_chunk(xconn, &xhead, sizeof(DBHEAD));
+                        xconn->over(xconn);
+                        goto disklist;
+                    }
+                    goto err_end;
+                }
+                else if(op == E_OP_LIST)
+                    goto disklist;
             }
         }
         if(ret >= 0) return conn->over(conn);
@@ -1277,7 +1315,7 @@ int sbase_initialize(SBASE *sbase, char *conf)
     traced->nworking_tosleep = iniparser_getint(dict, "TRACED:nworking_tosleep", SB_NWORKING_TOSLEEP);
     traced->set_log(traced, iniparser_getstr(dict, "TRACED:logfile"));
     traced->set_log_level(traced, iniparser_getint(dict, "TRACED:log_level", 0));
-    traced->session.flags = SB_NONBLOCK;
+    //traced->session.flags = SB_NONBLOCK;
     traced->session.packet_type = PACKET_CERTAIN_LENGTH;
     traced->session.packet_length = sizeof(DBHEAD);
     traced->session.buffer_size = iniparser_getint(dict, "TRACED:buffer_size", SB_BUF_SIZE);

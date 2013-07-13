@@ -28,6 +28,12 @@ extern "C" {
 #define DBASE_RESP_FIND       0x100a
 #define DBASE_REQ_REQUIRE     0x000b
 #define DBASE_RESP_REQUIRE    0x100b
+#define DBASE_REQ_ADD_MASK    0x000c
+#define DBASE_RESP_ADD_MASK   0x100c
+#define DBASE_REQ_DROP_MASK   0x000d
+#define DBASE_RESP_DROP_MASK  0x100d
+#define DBASE_REQ_SET_MODE    0x000e
+#define DBASE_RESP_SET_MODE   0x100e
 #define DBASE_CMD_BASE        0x1000
 #define DBASE_PATH_MAX        256
 #define DBASE_META_PATH       0x01

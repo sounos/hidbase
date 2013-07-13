@@ -87,6 +87,8 @@ int xmap_reset_meta(XMAP *xmap, int qid);
 int xmap_over_meta(XMAP *xmap, int qid, int diskid, int *status);
 /* return diskid */
 int xmap_set_disk(XMAP *xmap, MDISK *disk);
+/* get disk host */
+int xmap_get_disk_host(XMAP *xmap, int diskid, char *ip, int *port);
 /* set groupid */
 int xmap_set_groupid(XMAP *xmap, int diskid, int groupid);
 /* get diskid */

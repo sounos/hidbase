@@ -303,12 +303,11 @@
                             html += "<li class='ltab' onmousemove=\"onDiv(this, 'ltab-selected')\"";
                             html += " onmouseout=\"outDiv(this, 'ltab')\" >";
                             html += "<form style='' action='javascript:void(0)' ";
-                            html += " onsubmit='return DiskEdit(this);'>";
-                            html += "<input type=hidden name='op' value='3'>";
+                            html += " onsubmit='return false;'>";
                             html += "<input type=hidden name='diskid' value='"+x+"'>";
                             html += "编号:[<span class='ndisk'>"+x+"</span>]";
                             html += "&nbsp;&nbsp;";
-                            html += "<select name='mode'>";
+                            html += "<select name='mode' onchange='javascript:DiskEdit(this.form)'>";
                             html += "<option value='0' "+s0+">磁盘存储</option>";
                             html += "<option value='1' "+s1+">mmap存储</option>";
                             html += "</select>";
@@ -321,8 +320,9 @@
                             html += "&nbsp;&nbsp;";
                             if((masks = disks[x]['masks']))
                             {
-                                html += "<select name='masklist' onchange='MaskDel(this.form)'>";
-                                html += "<option value='-1' selected>删除分组</option>";
+                                html += "<select name='masklist' onchange='MaskDrop(this,"+x+")' >";
+                                html += "<option value='-1' selected>数据分组</option>";
+                                html += "<option value='-2' >重置分组</option>";
                                 for(k in masks)
                                 {
                                     html += "<option value='"+masks[k]+"'>"+masks[k]+"</option>";
@@ -330,11 +330,8 @@
                                 html += "</select>";
                                 html += "&nbsp;&nbsp;";
                             }
-                            html += "添加分组:<input type=text name='mask' size=16 >";
-                            html += "<input type=button value='添加' onclick='MaskAdd(this.form)'>";
-                            html += "&nbsp;&nbsp;";
-                            html += "<span class='edelete' title='Delete' ";
-                            html += " onclick=\"DiskDel("+x+")\">"+chrdel+"</span>";
+                            html += "<input type=text name='mask' size=16 >";
+                            html += "<input type=button value='添加分组' onclick='MaskAdd(this.form)'>";
                             html += "</form></li>";
                         }
                         html += "</ul>";
@@ -409,34 +406,16 @@
             function DiskEdit(form)
             {
                 var xmlHttp = null;
-                var path = "";
-                var port = 0;
-                var limit = 0;
                 var diskid = -1;
                 var o = null;
                 var argv = "";
 
-                if(form && (op = form['op'].value) > 0)
+                if(form && (diskid = form['diskid'].value) > 0
+                    && (o = form['mode']) && (mode = o.options[o.selectedIndex].value) >= 0)
                 {
-                    if(op == 1 && (path = form['path'].value) != "" 
-                        && (port = form['port'].value) > 0 
-                        && (o = form['mode']) && (mode = o.options[o.selectedIndex].value) >= 0
-                        && (limit = form['limit'].value) >= 0)
-                    {
-                        argv = "op=1&path="+path+"&port="+port+"&mode="+mode+"&limit="+limit;
-                    }
-                    else if(op == 2 && (diskid = form['diskid'].value) > 0)
-                    {
-                        argv = "op=2&diskid="+diskid;
-                    }
-                    else if(op == 3 && (diskid = form['diskid'].value) > 0 
-                        && (limit = form['limit'].value) >= 0
-                        && (o = form['mode']) && (mode = o.options[o.selectedIndex].value) >= 0)
-                    {
-                        argv = "op=3&diskid="+diskid+"&limit="+limit+"&mode="+mode;
-                    }
+                    argv = "op=2&diskid="+diskid+"&mode="+mode;
                     ClearDisks();
-                }else alert("请输入正确的数据");
+                }
                 if(argv && (xmlHttp = CreateXMLHTTP()) != null)
                 {
                     argv += "&rand="+Math.random();
@@ -449,12 +428,6 @@
                         {
                             if(xmlHttp.status == 200)
                             {
-                                if(op == 1)
-                                {
-                                    form['path'].value = "";
-                                    form['port'].value = "";
-                                    form['limit'].value = 0;
-                                }
                                 ListDisks(xmlHttp.responseText);
                             }
                         }
@@ -462,12 +435,13 @@
                     xmlHttp.send(argv);
                 }
             }
-            //del node
-            function DiskDel(diskid)
+            //del all node
+            function MaskDrop(o,diskid)
             {
-                
-                var argv = "op=2&diskid="+diskid;
-                if(argv && confirm("确认删除该任务?") == true && (xmlHttp = CreateXMLHTTP()) != null)
+                var argv = "op=4&diskid="+diskid;
+                if((o.options[o.selectedIndex].value) == -2
+                    && argv && confirm("确认移除所有分组?") == true 
+                    && (xmlHttp = CreateXMLHTTP()) != null)
                 {
                     ClearDisks();
                     //alert(argv);
@@ -491,10 +465,16 @@
             function MaskAdd(form)
             {
                 var diskid = 0;
+                var n = 0;
                 var mask = "";
                 if(form && (diskid = form['diskid'].value) >= 0 && (mask = form['mask'].value))
                 {
-                    var argv = "op=6&diskid="+diskid+"&mask="+mask;
+                    if((n = mask.indexOf('/')) < 0 || mask.substring(n+1) < 1) 
+                    {
+                        alert('分组格式:238.x.x.x/n(n为顺序增加分组数，不能小于1)');
+                        return false;
+                    }
+                    var argv = "op=3&diskid="+diskid+"&mask="+mask;
                     if(argv && (xmlHttp = CreateXMLHTTP()) != null)
                     {
                         //alert(argv);
@@ -513,43 +493,6 @@
                                 else
                                 {
                                     alert("添加分组["+mask+"]失败!");
-                                }
-                            }
-                        }
-                        xmlHttp.send(argv);
-                    }
-                }
-            }
-            //del mask
-            function MaskDel(form)
-            {
-                var diskid = 0;
-                var mask = "";
-                var o = null;
-                if(form && (diskid = form['diskid'].value) >= 0 && (o = form['masklist']) 
-                    && (mask = o.options[o.selectedIndex].value) != -1)
-                {
-                    var argv = "op=7&diskid="+diskid+"&mask="+mask;
-                    var r = confirm("确认删除该分组["+mask+"]?");
-                    if(r != true) o.options[0].selected = true;
-                    if(argv && r == true && (xmlHttp = CreateXMLHTTP()) != null)
-                    {
-                        //alert(argv);
-                        xmlHttp.open('POST', '/', true);
-                        xmlHttp.setRequestHeader("Content-Length", argv.length);
-                        xmlHttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-                        xmlHttp.onreadystatechange=function()
-                        {
-                            if(xmlHttp.readyState==4)
-                            {
-                                if(xmlHttp.status == 200)
-                                {
-                                    ClearDisks();
-                                    ListDisks(xmlHttp.responseText);
-                                }
-                                else
-                                {
-                                    alert("删除分组["+mask+"]失败!");
                                 }
                             }
                         }

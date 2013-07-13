@@ -508,7 +508,7 @@ int httpd_oob_handler(CONN *conn, CB_DATA *oob)
 /* chunkd packet handler */
 int chunkd_packet_handler(CONN *conn, CB_DATA *packet)
 {
-    int ret = -1, diskid = -1, n = 0;
+    int ret = -1, diskid = -1, n = 0, i = 0, mask = 0;
     DBHEAD *xhead = NULL, *resp = NULL;
     CB_DATA *chunk = NULL;
     char *p = NULL;
@@ -547,7 +547,7 @@ int chunkd_packet_handler(CONN *conn, CB_DATA *packet)
                     break;
                 case DBASE_REQ_GET:
                     if((n = xdbase_bound(xdb, diskid, 1)) > 0
-                        && (chunk = conn->newchunk(conn, n + sizeof(DBHEAD))))
+                            && (chunk = conn->newchunk(conn, n + sizeof(DBHEAD))))
                     {
                         resp = (DBHEAD *)chunk->data;
                         memcpy(resp, xhead, sizeof(DBHEAD));
@@ -570,6 +570,33 @@ int chunkd_packet_handler(CONN *conn, CB_DATA *packet)
                 case DBASE_REQ_COPY:
                     break;
                 case DBASE_REQ_STATE:
+                    break;
+                case DBASE_REQ_ADD_MASK:
+                    if((mask = xhead->ip))
+                    {
+                        for(i = 0; i < xhead->ssize; i++)
+                        {
+                            if(chunkd_add_mask(diskid, mask) == 0)
+                                ret |= xdbase_add_mask(xdb, diskid, mask);
+                            mask++;
+                        }
+                    }
+                    if(ret) goto err;
+                    break;
+                case DBASE_REQ_DROP_MASK:
+                    for(i = 0; i < DBASE_MASK_MAX; i++)
+                    {
+                        if((mask = xdb->state->xdisks[diskid].masks[i].mask_ip))
+                        {
+                            ret |= chunkd_drop_mask(diskid, mask);
+                            ret |= xdbase_del_mask(xdb, diskid, mask);
+                        }
+                    }
+                    if(ret) goto err;
+                    break;
+                case DBASE_REQ_SET_MODE:
+                    ret = xdbase_set_disk_mode(xdb, diskid, xhead->ssize);//mode reuse xhead->ssize
+                    if(ret) goto err;
                     break;
             }
 end:
@@ -679,6 +706,7 @@ int chunkd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *ch
         {
             ret = xdbase_update_data(xdb, diskid, xhead->id, chunk->data, chunk->ndata); 
         }
+
         /*
         else if(xhead->cmd == DBASE_REQ_SET 
                 || xhead->cmd == DBASE_REQ_UPBATCH 
