@@ -462,7 +462,7 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                         case E_OP_SET_MODE:
                             if(mode >= 0)
                             {
-                                xhead.cmd = DBASE_REQ_DROP_MASK;
+                                xhead.cmd = DBASE_REQ_SET_MODE;
                                 xhead.ssize = mode;
                             }
                         break;
