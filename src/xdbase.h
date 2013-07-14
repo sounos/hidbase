@@ -42,6 +42,7 @@ typedef struct _XDBSTATE
     int     rootid;
     int     mode;
     int     bits;
+    int     masks[DBASE_MASK_MAX];
     off_t   op_total;
     off_t   op_slow;
     XDISK   xdisks[DBASE_MASK_MAX];

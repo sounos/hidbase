@@ -302,9 +302,9 @@ int xdbase_add_mask(XDBASE *xdbase, int diskid, int mask)
         {
             ch = (unsigned char *)&mask;
             i = ch[3] % DBASE_MASK_MAX;
-            //WARN_LOGGER(xdbase->logger, "masks[%d][%d] mask[%d] sub[%d]", i, xdbase->state->xdisks[diskid].masks[i].mask_ip, mask, ch[3]);
-            if(xdbase->state->xdisks[diskid].masks[i].mask_ip == 0)
+            if(xdbase->state->masks[i] == 0 && xdbase->state->xdisks[diskid].masks[i].mask_ip == 0)
             {
+                xdbase->state->masks[i] = mask;
                 xdbase->state->xdisks[diskid].masks[i].mask_ip = mask;
                 xdbase->state->xdisks[diskid].masks[i].root = mmtree64_new_tree(xdbase->idmap);
                 xdbase->state->xdisks[diskid].masks[i].total = 0;
@@ -330,13 +330,15 @@ int xdbase_del_mask(XDBASE *xdbase, int diskid, int mask)
                 && xdbase->state->xdisks[diskid].nmasks > 0)
         {
             ch = (unsigned char *)&mask;
-            if((i = DBKMASK(ch[3])) >= 0 && xdbase->state->xdisks[diskid].masks[i].mask_ip == mask)
+            i = ch[3] % DBASE_MASK_MAX;
+            if(xdbase->state->xdisks[diskid].masks[i].mask_ip == mask)
             {
                 xdbase->state->xdisks[diskid].masks[i].mask_ip = 0;
                 mmtree64_remove_tree(xdbase->idmap, xdbase->state->xdisks[diskid].masks[i].root);
                 xdbase->state->xdisks[diskid].masks[i].root = 0;
                 xdbase->state->xdisks[diskid].masks[i].total = 0;
                 xdbase->state->xdisks[diskid].nmasks--;
+                xdbase->state->masks[i] = 0;
                 ret = i;
             }
         }
