@@ -318,6 +318,9 @@
                             html += "&nbsp;&nbsp;";
                             html += "总数:[<span class='ndisk'>"+total+"</span>]";
                             html += "&nbsp;&nbsp;";
+                            html += "<input type=text name='mask' size=16 >";
+                            html += "<input type=button value='添加分组' onclick='MaskAdd(this.form)'>";
+                            html += "&nbsp;&nbsp;";
                             if((masks = disks[x]['masks']))
                             {
                                 html += "<select name='masklist' onchange='MaskDrop(this,"+x+")' >";
@@ -328,10 +331,7 @@
                                     html += "<option value='"+masks[k]+"'>"+masks[k]+"</option>";
                                 }
                                 html += "</select>";
-                                html += "&nbsp;&nbsp;";
                             }
-                            html += "<input type=text name='mask' size=16 >";
-                            html += "<input type=button value='添加分组' onclick='MaskAdd(this.form)'>";
                             html += "</form></li>";
                         }
                         html += "</ul>";
@@ -384,7 +384,7 @@
                 var xmlHttp = null;
                 if((xmlHttp = CreateXMLHTTP()) != null)
                 {
-                    var argv = "op=4&rand="+Math.random();
+                    var argv = "op=1&rand="+Math.random();
                     //alert(argv);
                     xmlHttp.open('POST', '/', true);
                     xmlHttp.setRequestHeader("Content-Length", argv.length);

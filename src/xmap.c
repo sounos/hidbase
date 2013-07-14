@@ -394,6 +394,20 @@ int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
 }
 
 /* return diskid */
+int xmap_reset_masks(XMAP *xmap, int diskid)
+{
+    int ret = -1;
+
+    if(xmap && diskid > 0 && diskid <= xmap->state->disk_id_max)
+    {
+        MUTEX_LOCK(xmap->mutex);
+        xmap->disks[diskid].nmasks = 0;
+        MUTEX_UNLOCK(xmap->mutex);
+    }
+    return ret;
+}
+
+/* return diskid */
 int xmap_set_disk(XMAP *xmap, MDISK *disk)
 {
     unsigned char *ch = NULL;
@@ -611,17 +625,17 @@ void xmap_clean(XMAP *xmap)
 {
     if(xmap)
     {
-        WARN_LOGGER(xmap->logger, "Ready clean tree[%p]", xmap->tree);
+        //WARN_LOGGER(xmap->logger, "Ready clean tree[%p]", xmap->tree);
         mmtree_close(xmap->tree);
-        WARN_LOGGER(xmap->logger, "Ready clean tree64[%p]", xmap->tree64);
+        //WARN_LOGGER(xmap->logger, "Ready clean tree64[%p]", xmap->tree64);
         mmtree64_close(xmap->tree64);
-        WARN_LOGGER(xmap->logger, "Ready clean queue[%p]", xmap->queue);
+        //WARN_LOGGER(xmap->logger, "Ready clean queue[%p]", xmap->queue);
         mmqueue_clean(xmap->queue);
-        WARN_LOGGER(xmap->logger, "Ready clean kmap[%p]", xmap->kmap);
+        //WARN_LOGGER(xmap->logger, "Ready clean kmap[%p]", xmap->kmap);
         mmtrie_clean(xmap->kmap);
-        WARN_LOGGER(xmap->logger, "Ready reset db[%p]", xmap->db);
+        //WARN_LOGGER(xmap->logger, "Ready reset db[%p]", xmap->db);
         cdb_reset(xmap->db);
-        WARN_LOGGER(xmap->logger, "Ready clean db[%p]", xmap->db);
+        //WARN_LOGGER(xmap->logger, "Ready clean db[%p]", xmap->db);
         cdb_clean(xmap->db);
         if(xmap->diskio.map) 
         {
@@ -653,7 +667,7 @@ void xmap_clean(XMAP *xmap)
             close(xmap->stateio.fd);
             xmap->stateio.fd = 0;
         }
-        WARN_LOGGER(xmap->logger, "Ready clean mutex[%p]", xmap->mutex);
+        //WARN_LOGGER(xmap->logger, "Ready clean mutex[%p]", xmap->mutex);
         MUTEX_DESTROY(xmap->mutex);
         MUTEX_DESTROY(xmap->cmutex);
         LOGGER_CLEAN(xmap->logger);

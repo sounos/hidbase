@@ -385,6 +385,7 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
     off_t limit = -1;
     DBHEAD xhead = {0};
     CONN *xconn = NULL;
+    SESSION sess = {0};
 
     if(conn && packet && cache && chunk && chunk->ndata > 0)
     {
@@ -468,15 +469,16 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                         case E_OP_ADD_MASK:
                             if(mask && num > 0)
                             {
-                                xhead.cmd = DBASE_REQ_DROP_MASK;
+                                xhead.cmd = DBASE_REQ_ADD_MASK;
                                 xhead.ip = mask;
                                 xhead.ssize = num;
                             }
                         break;
                     }
-                     
-                    if(xhead.cmd && (xconn = traced->newconn(traced, -1, -1, ip, port, NULL)))
+                    if(xhead.cmd && (xconn = traced->newconn(traced, -1, -1, ip, port, &sess)))
                     {
+                        //fprintf(stdout, "%s::%d mask:%d num:%d remote[%s:%d]\n", __FILE__, __LINE__, mask, num, ip, port);
+                        if(op == E_OP_DROP_MASK) xmap_reset_masks(xmap, diskid);
                         xconn->push_chunk(xconn, &xhead, sizeof(DBHEAD));
                         xconn->over(xconn);
                         goto disklist;

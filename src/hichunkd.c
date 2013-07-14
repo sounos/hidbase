@@ -360,8 +360,8 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                 }
                 else if(op == E_OP_ADD_MASK)
                 {
-                    if(diskid >= 0 && mask && chunkd_add_mask(diskid, mask) == 0
-                            && xdbase_add_mask(xdb, diskid, mask) >= 0)
+                    if(diskid >= 0 && mask && xdbase_add_mask(xdb, diskid, mask) >= 0
+                            && chunkd_add_mask(diskid, mask) == 0)
                     {
                         goto disklist;
                     }
@@ -462,9 +462,9 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                 else goto err_end;
 
 disklist:
-                if((ret = xdbase_list_disks(xdb, line)) > 0)
+                if((ret = xdbase_list_disks(xdb, buf)) > 0)
                 {
-                    p = buf;
+                    p = line;
                     p += sprintf(p, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\n"
                             "Content-Type: text/html;charset=%s\r\n",
                             ret, http_default_charset);
@@ -472,8 +472,8 @@ disklist:
                         p += sprintf(p, "Connection: %s\r\n", (http_req->hlines + n));
                     p += sprintf(p, "Connection:Keep-Alive\r\n");
                     p += sprintf(p, "\r\n");
-                    conn->push_chunk(conn, buf, (p - buf));
-                    conn->push_chunk(conn, line, ret);
+                    conn->push_chunk(conn, line, (p - line));
+                    conn->push_chunk(conn, buf, ret);
                     return conn->over(conn);
                 }
             }
@@ -508,7 +508,7 @@ int httpd_oob_handler(CONN *conn, CB_DATA *oob)
 /* chunkd packet handler */
 int chunkd_packet_handler(CONN *conn, CB_DATA *packet)
 {
-    int ret = -1, diskid = -1, n = 0, i = 0, mask = 0;
+    int ret = -1, diskid = -1, n = 0, i = 0, mask = 0, num = 0;
     DBHEAD *xhead = NULL, *resp = NULL;
     CB_DATA *chunk = NULL;
     char *p = NULL;
@@ -572,13 +572,21 @@ int chunkd_packet_handler(CONN *conn, CB_DATA *packet)
                 case DBASE_REQ_STATE:
                     break;
                 case DBASE_REQ_ADD_MASK:
-                    if((mask = xhead->ip))
+                    if((mask = xhead->ip) && (num = xhead->ssize) > 0)
                     {
-                        for(i = 0; i < xhead->ssize; i++)
+                        ACCESS_LOGGER(logger, "add mask[%d/%d]", mask, num);
+                        for(i = 0; i < num; i++)
                         {
-                            if(chunkd_add_mask(diskid, mask) == 0)
-                                ret |= xdbase_add_mask(xdb, diskid, mask);
-                            mask++;
+                            if(xdbase_add_mask(xdb, diskid, mask) >= 0)
+                            {
+                                ret |= chunkd_add_mask(diskid, mask);
+                                ACCESS_LOGGER(logger, "added mask[%d][%d]", i, mask);
+                            }
+                            else
+                            {
+                                WARN_LOGGER(logger, "add mask[%d][%d] failed", i, mask);
+                            }
+                            mask += (1 << 24);
                         }
                     }
                     if(ret) goto err;

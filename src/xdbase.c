@@ -301,14 +301,15 @@ int xdbase_add_mask(XDBASE *xdbase, int diskid, int mask)
                 && xdbase->state->xdisks[diskid].nmasks < DBASE_MASK_MAX)
         {
             ch = (unsigned char *)&mask;
-            if((i = DBKMASK(ch[3])) >= 0 && xdbase->state->xdisks[diskid].masks[i].mask_ip == 0)
+            i = ch[3] % DBASE_MASK_MAX;
+            //WARN_LOGGER(xdbase->logger, "masks[%d][%d] mask[%d] sub[%d]", i, xdbase->state->xdisks[diskid].masks[i].mask_ip, mask, ch[3]);
+            if(xdbase->state->xdisks[diskid].masks[i].mask_ip == 0)
             {
                 xdbase->state->xdisks[diskid].masks[i].mask_ip = mask;
                 xdbase->state->xdisks[diskid].masks[i].root = mmtree64_new_tree(xdbase->idmap);
                 xdbase->state->xdisks[diskid].masks[i].total = 0;
                 xdbase->state->xdisks[diskid].nmasks++;
                 ret = i;
-                //fprintf(stdout, "%s::%d mask:%d/%d\n", __FILE__, __LINE__, i, mask);
             }
         }
         MUTEX_UNLOCK(xdbase->mutex);
