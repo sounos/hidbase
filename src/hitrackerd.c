@@ -17,11 +17,11 @@
 #include "logger.h"
 #include "mtrie.h"
 #include "xmap.h"
-#ifndef HTTP_BUF_SIZE
-#define HTTP_BUF_SIZE           131072
-#endif
 #ifndef HTTP_LINE_SIZE
 #define HTTP_LINE_SIZE          4096
+#endif
+#ifndef HTTP_BLOCK_MAX 
+#define HTTP_BLOCK_MAX          262144
 #endif
 #ifndef HTTP_QUERY_MAX
 #define HTTP_QUERY_MAX          1024
@@ -236,7 +236,6 @@ void httpd_over_handler(int index, int64_t key)
 /* fail handler */
 void httpd_fail_handler(int index, int64_t key)
 {
-    //char buf[HTTP_BUF_SIZE];
     CONN *conn  = NULL;
 
     if(index && (conn = httpd->findconn(httpd, index)) && key == conn->xids64[0])
@@ -273,18 +272,19 @@ int httpd_out_handler(DBHEAD *resp)
 int httpd_packet_handler(CONN *conn, CB_DATA *packet)
 {
     char buf[HTTP_BUF_SIZE], file[HTTP_PATH_MAX], *block = NULL, *p = NULL, *end = NULL;
+    int ret = -1, n = 0, dbreq = 0;
     HTTP_REQ http_req = {0};
     struct stat st = {0};
-    int ret = -1, n = 0;
     
     if(conn)
     {
         //TIMER_INIT(timer);
         p = packet->data;
         end = packet->data + packet->ndata;
-        //fprintf(stdout, "%s\n", p);
+        //WARN_LOGGER(logger, "%s", p);
         if(http_request_parse(p, end, &http_req, http_headers_map) == -1) goto err_end;
-        if(http_req.reqid == HTTP_PUT && (n = http_req.headers[HEAD_ENT_CONTENT_LENGTH]) > 0
+        if(strncasecmp(http_req.path, dbprefix, ndbprefix) == 0) dbreq = 1; 
+        if(dbreq && (n = http_req.headers[HEAD_ENT_CONTENT_LENGTH]) > 0
                 && (n = atol(http_req.hlines + n)) > 0)
         {
             if((conn->xids[2] = xmap_truncate_block(xmap, n, &block)) > 0 && block)
@@ -300,9 +300,7 @@ int httpd_packet_handler(CONN *conn, CB_DATA *packet)
                 return 0;
             }
         }
-        //fprintf(stdout, "%s:%d headers:%s\r\n", __FILE__, __LINE__, p);
-        if(strncasecmp(http_req.path, dbprefix, ndbprefix) == 0) 
-            return httpd_request_handler(conn, &http_req, NULL, 0);
+        if(dbreq) return httpd_request_handler(conn, &http_req, NULL, 0);
         if(http_req.reqid == HTTP_GET)
         {
             if(is_inside_html && httpd_index_html_code && nhttpd_index_html_code > 0)
@@ -382,13 +380,14 @@ err_end:
 int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chunk)
 {
     char *p = NULL, *pp = NULL, *end = NULL, *path = NULL, *url = NULL, *keys = NULL,
-        *key = NULL, buf[HTTP_BUF_SIZE], line[HTTP_LINE_SIZE], ip[HTTP_IP_MAX];
-    HTTP_REQ httpRQ = {0}, *http_req = NULL;
-    int ret = -1, id = 0, op = 0, n = 0, i = 0, diskid = -1, 
+        *key = NULL, header[HTTP_LINE_SIZE], ip[HTTP_IP_MAX];
+    int ret = -1, id = 0, op = 0, n = 0, i = 0, diskid = -1, nout = 0,
         port = 0, mode = -1, mask = 0, num = 0;
-    off_t limit = -1;
-    DBHEAD xhead = {0};
+    HTTP_REQ httpRQ = {0}, *http_req = NULL;
+    CB_DATA *block = NULL;
     CONN *xconn = NULL;
+    DBHEAD xhead = {0};
+    off_t limit = -1;
     SESSION sess = {0};
 
     if(conn && packet && cache && chunk && chunk->ndata > 0)
@@ -485,30 +484,27 @@ int httpd_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *chu
                         if(op == E_OP_DROP_MASK) xmap_reset_masks(xmap, diskid);
                         xconn->push_chunk(xconn, &xhead, sizeof(DBHEAD));
                         xconn->over(xconn);
-                        goto disklist;
+                        goto disklists;
                     }
-                    goto err_end;
                 }
-                else if(op == E_OP_LIST)
-                    goto disklist;
+                if(op == E_OP_LIST){goto disklists;}
             }
         }
-        if(ret >= 0) return conn->over(conn);
-        else goto err_end;
-disklist:
-        if((ret = xmap_list_disks(xmap, buf)) > 0)
+        return conn->over(conn);
+disklists:
+        if((block = conn->newchunk(conn, HTTP_BLOCK_MAX)))
         {
-            p = line;
-            p += sprintf(p, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\n"
-                    "Content-Type: text/html;charset=%s\r\n",
-                    ret, http_default_charset);
-            if((n = http_req->headers[HEAD_GEN_CONNECTION]) > 0)
-                p += sprintf(p, "Connection: %s\r\n", (http_req->hlines + n));
-            p += sprintf(p, "\r\n");
-            conn->push_chunk(conn, line, (p - line));
-            conn->push_chunk(conn, buf, ret);
-            return conn->over(conn);
+            if((nout = xmap_list_disks(xmap, block->data)) > 0)
+            {
+                n = sprintf(header, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\nContent-Type: text/html;charset=%s\r\nConnection: close\r\n\r\n", ret, http_default_charset);
+                //WARN_LOGGER(logger, "remote[%s:%d]", conn->remote_ip, conn->remote_port);
+                conn->push_chunk(conn, header, n);
+                if(conn->send_chunk(conn, block, nout) != 0)
+                    conn->freechunk(conn, block);
+                return conn->over(conn);
+            }
         }
+        return conn->close(conn);
 err_end: 
         ret = conn->push_chunk(conn, HTTP_BAD_REQUEST, strlen(HTTP_BAD_REQUEST));
     }
