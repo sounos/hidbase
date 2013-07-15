@@ -28,6 +28,7 @@
         .ultab{list-style:none;padding:0;margin:0;width:100%;}
         .ltabname{cursor:pointer;font-size:12pt;}
         .ltab{background-color:#D0E9F7;cursor: pointer;width:100%;}
+        .htab{background-color:#2F5FA1;color:#c0c0c0;width:100%;height:30px;}
         .ltab-selected{background-color:#F4FBFF;cursor: pointer;width:100%;}
         .lfname{cursor: pointer;}
         .ldisk{background-color:#F4FBFF;cursor: pointer;}
@@ -40,7 +41,8 @@
         .edelete{color:#B4045F;font-size:13pt;font-weight:bolder;cursor:pointer;}
         .eview{color:#0000ff;font-size:13pt;font-weight:bolder;cursor:pointer;}
         .closetxt{cursor:pointer;font-size:10pt;color:#cccccc;text-align:right;}
-        .ndisk{display:inline;color:red;font-size:12pt;}
+        .ndisk{display:inline;color:#FF8000;font-size:12pt;font-weight:bolder;}
+        .xdisk{display:inline;color:#5FB404;font-size:12pt;font-weight:bolder;}
         </style>
         <script language='javascript'>
             var oTimer = null;
@@ -270,7 +272,7 @@
                 if(txt && (res = eval(txt)) && disksview)
                 {
                     disksview.innerHTML = "";
-                    if((disks = res['disklist']))
+                    if((nodes = res['disklist']))
                     {
                         //var osel = document.getElementById('disks');
                         var osel = document.forms['dataview']['disks'];
@@ -281,58 +283,66 @@
                         }
                         var html = "<ul class='ultab'>";
                         j = 1;
-                        for(x in disks)
+                        for(k in nodes)
                         {
-                            var ip = disks[x]['ip'];
-                            var path = disks[x]['disk'];
-                            var port = disks[x]['sport'];
-                            var limit = disks[x]['limit'];
-                            var mode = disks[x]['mode'];
-                            var total = disks[x]['total'];
-                            var dleft = disks[x]['left'];
-                            var mleft = parseInt(dleft/(1024 * 1024));
-                            var dall = disks[x]['all'];
-                            var mall = parseInt(dall/(1024 * 1024));
-                            var dscale = parseInt((dleft/dall) * 100);
-                            var masks = null;
-                            var nmasks = 0;
-                            var s0 = "", s1 = "";
-                            if(mode == 0) s0 = "selected";
-                            if(mode == 1) s1 = "selected";
-                            osel.options[j++] = new Option(ip+":"+port, x);
-                            html += "<li class='ltab' onmousemove=\"onDiv(this, 'ltab-selected')\"";
-                            html += " onmouseout=\"outDiv(this, 'ltab')\" >";
-                            html += "<form style='' action='javascript:void(0)' ";
-                            html += " onsubmit='return false;'>";
-                            html += "<input type=hidden name='diskid' value='"+x+"'>";
-                            html += "编号:[<span class='ndisk'>"+x+"</span>]";
-                            html += "&nbsp;&nbsp;";
-                            html += "<select name='mode' onchange='javascript:DiskEdit(this.form)'>";
-                            html += "<option value='0' "+s0+">磁盘存储</option>";
-                            html += "<option value='1' "+s1+">mmap存储</option>";
-                            html += "</select>";
-                            html += "&nbsp;&nbsp;";
-                            html += "磁盘:[<span class='ndisk'>"+ip+':'+port+"</span>]";
-                            html += "&nbsp;&nbsp;";
-                            html += "剩余:[<span class='ndisk'>"+dscale+"%</span>:"+mleft+"M/"+mall+"M]";
-                            html += "&nbsp;&nbsp;";
-                            html += "总数:[<span class='ndisk'>"+total+"</span>]";
-                            html += "&nbsp;&nbsp;";
-                            html += "<input type=text name='mask' size=16 >";
-                            html += "<input type=button value='添加分组' onclick='MaskAdd(this.form)'>";
-                            html += "&nbsp;&nbsp;";
-                            if((masks = disks[x]['masks']))
+                            var ip = nodes[k]['ip'];
+                            var disks = nodes[k]['disks'];
+                            html += "<li class='htab'>"+ip+"</li>";
+                            for(x in disks)
                             {
-                                html += "<select name='masklist' onchange='MaskDrop(this,"+x+")' >";
-                                html += "<option value='-1' selected>数据分组</option>";
-                                html += "<option value='-2' >重置分组</option>";
-                                for(k in masks)
-                                {
-                                    html += "<option value='"+masks[k]+"'>"+masks[k]+"</option>";
-                                }
+                                var id = disks[x]['id'];
+                                var port = disks[x]['sport'];
+                                var limit = disks[x]['limit'];
+                                var mode = disks[x]['mode'];
+                                var total = disks[x]['total'];
+                                var dleft = disks[x]['left'];
+                                var mleft = parseInt(dleft/(1024 * 1024));
+                                var dall = disks[x]['all'];
+                                var mall = parseInt(dall/(1024 * 1024));
+                                var dscale = parseInt((dleft/dall) * 100);
+                                var masks = null;
+                                var nmasks = 0;
+                                var s0 = "", s1 = "";
+                                if(mode == 0) s0 = "selected";
+                                if(mode == 1) s1 = "selected";
+                                osel.options[j++] = new Option(ip+":"+port, x);
+                                var css = 'ndisk';
+                                if(x % 2 == 0) css = 'xdisk';
+                                html += "<li class='ltab' onmousemove=\"onDiv(this, 'ltab-selected')\"";
+                                html += " onmouseout=\"outDiv(this, 'ltab')\" >";
+                                html += "<form style='' action='javascript:void(0)' ";
+                                html += " onsubmit='return false;'>";
+                                html += "<input type=hidden name='diskid' value='"+id+"'>";
+                                html += "&nbsp;&nbsp;&nbsp;&nbsp;";
+                                html += "[<span class='"+css+"'>"+x+"</span>]";
+                                html += "&nbsp;&nbsp;";
+                                html += "<select name='mode' onchange='javascript:DiskEdit(this.form)'>";
+                                html += "<option value='0' "+s0+">磁盘存储</option>";
+                                html += "<option value='1' "+s1+">mmap存储</option>";
                                 html += "</select>";
+                                html += "&nbsp;&nbsp;";
+                                html += "端口:[<span class='"+css+"'>"+port+"</span>]";
+                                html += "&nbsp;&nbsp;";
+                                html += "剩余:[<span class='"+css+"'>"+dscale+"%</span>#"+mleft+"M/"+mall+"M]";
+                                html += "&nbsp;&nbsp;";
+                                html += "总数:[<span class='"+css+"'>"+total+"</span>]";
+                                html += "&nbsp;&nbsp;";
+                                html += "<input type=text name='mask' size=16 >";
+                                html += "<input type=button value='添加分组' onclick='MaskAdd(this.form)'>";
+                                html += "&nbsp;&nbsp;";
+                                if((masks = disks[x]['masks']))
+                                {
+                                    html += "<select name='masklist' onchange='MaskDrop(this,"+x+")' >";
+                                    html += "<option value='-1' selected>数据分组</option>";
+                                    html += "<option value='-2' >重置分组</option>";
+                                    for(j in masks)
+                                    {
+                                        html += "<option value='"+masks[j]+"'>"+masks[j]+"</option>";
+                                    }
+                                    html += "</select>";
+                                }
+                                html += "</form></li>";
                             }
-                            html += "</form></li>";
                         }
                         html += "</ul>";
                         disksview.innerHTML = html;

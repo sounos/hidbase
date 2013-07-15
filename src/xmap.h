@@ -36,15 +36,24 @@ typedef struct _XMASK
     int total;
     int root;
 }XMASK;
+typedef struct _XHNODE
+{
+    int disks[DBASE_MASK_MAX];
+    int ndisks;
+    int ip;
+}XHNODE;
 typedef struct _XMSTATE
 {
     int status;
+    int bits;
     int id_max;
     int disk_id_max;
-    int qwait;
+    int node_id_max;
     int id_wait;
+    int qwait;
     int qleft;
     XMASK masks[DBASE_MASK_MAX];
+    XHNODE nodes[DBASE_NODE_MAX];
 }XMSTATE;
 typedef struct _XMIO
 {

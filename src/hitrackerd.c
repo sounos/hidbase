@@ -180,6 +180,7 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
 
     if(conn && http_req)
     {
+        conn->over_estate(conn);//disable drop cache 
         p = s = http_req->path + ndbprefix;
         while(*p && *p != '?')p++;
         if(*p == '?') *p = '\0';
@@ -195,17 +196,16 @@ int httpd_request_handler(CONN *conn, HTTP_REQ *http_req, char *data, int ndata)
         {
             xhead.cmd = DBASE_REQ_GET;
         }
-        xhead.cid = conn->xids[0];
+        xhead.cid = conn->xids[2];
         xhead.index = conn->index;
         conn->xids64[0] = xhead.id;
-        conn->xids[0] = http_req->reqid;
-        conn->xids[1] = 0;
-        conn->xids[2] = 0;
+        conn->xids[0] = http_req->reqid;//reqid
+        conn->xids[1] = 0;//keepalive
         xhead.ssize = 0;
         if((n = http_req->headers[HEAD_GEN_CONNECTION]) > 0
             && strcasestr(http_req->hlines + n, "keep-alive"))
         {
-            conn->xids[0] = 1;
+            conn->xids[1] = 1;
         }
         if(data && ndata > 0)
         {
@@ -249,20 +249,24 @@ void httpd_fail_handler(int index, int64_t key)
 }
 
 /* out data */
-void httpd_out_handler(int index, char *data, int ndata)
+int httpd_out_handler(DBHEAD *resp)
 {
-    char buf[HTTP_BUF_SIZE];
+    char buf[HTTP_BUF_SIZE], *block = NULL;
     CONN *conn  = NULL;
-    int n = 0;
+    int n = 0, ret = -1;
 
-    if(index && (conn = httpd->findconn(httpd, index)))
+    if(resp->index && (conn = httpd->findconn(httpd, resp->index))
+        && xmap_cache_info(xmap, resp->cid, &block) > 0 && block)
     {
-        n = sprintf(buf, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\n\r\n", ndata);
+        n = sprintf(buf, "HTTP/1.0 200 OK\r\nContent-Length: %d\r\n\r\n", resp->length);
+        conn->xids[2] = resp->cid;
+        conn->wait_estate(conn);
         conn->push_chunk(conn, buf, n);
-        conn->push_chunk(conn, data, ndata);
-        conn->over(conn);
+        ret = conn->relay_chunk(conn, block, resp->length);
+        if(!conn->xids[1])conn->over(conn);
+        ret = 0;
     }
-    return ;
+    return ret;
 }
 
 /* packet handler */
@@ -280,11 +284,12 @@ int httpd_packet_handler(CONN *conn, CB_DATA *packet)
         end = packet->data + packet->ndata;
         //fprintf(stdout, "%s\n", p);
         if(http_request_parse(p, end, &http_req, http_headers_map) == -1) goto err_end;
-        if((n = http_req.headers[HEAD_ENT_CONTENT_LENGTH]) > 0
+        if(http_req.reqid == HTTP_PUT && (n = http_req.headers[HEAD_ENT_CONTENT_LENGTH]) > 0
                 && (n = atol(http_req.hlines + n)) > 0)
         {
-            if((conn->xids[0] = xmap_truncate_block(xmap, n, &block)) > 0 && block)
+            if((conn->xids[2] = xmap_truncate_block(xmap, n, &block)) > 0 && block)
             {
+                ACCESS_LOGGER(logger, "truncate block cid[%d] length:%d", conn->xids[2], n);
                 conn->wait_estate(conn);
                 conn->save_cache(conn, &http_req, sizeof(HTTP_REQ));
                 return conn->store_chunk(conn, block, n);
@@ -308,7 +313,6 @@ int httpd_packet_handler(CONN *conn, CB_DATA *packet)
                         nhttpd_index_html_code, http_default_charset);
                 if((n = http_req.headers[HEAD_GEN_CONNECTION]) > 0)
                     p += sprintf(p, "Connection: %s\r\n", (http_req.hlines + n));
-                p += sprintf(p, "Connection:Keep-Alive\r\n");
                 p += sprintf(p, "\r\n");
                 conn->push_chunk(conn, buf, (p - buf));
                 return conn->push_chunk(conn, httpd_index_html_code, nhttpd_index_html_code);
@@ -500,7 +504,6 @@ disklist:
                     ret, http_default_charset);
             if((n = http_req->headers[HEAD_GEN_CONNECTION]) > 0)
                 p += sprintf(p, "Connection: %s\r\n", (http_req->hlines + n));
-            p += sprintf(p, "Connection:Keep-Alive\r\n");
             p += sprintf(p, "\r\n");
             conn->push_chunk(conn, line, (p - line));
             conn->push_chunk(conn, buf, ret);
@@ -550,14 +553,27 @@ int httpd_error_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *ch
 {
     int ret = -1;
 
-    if(conn && conn->xids[0] > 0)
+    if(conn && conn->xids[2] > 0)
     {
-        xmap_drop_cache(xmap, conn->xids[0]);
-        conn->xids[0] = 0;
+        xmap_drop_cache(xmap, conn->xids[2]);
+        conn->xids[2] = 0;
     }
     return ret;
 }
 
+/* data sendover handler */
+int httpd_sendover_handler(CONN *conn)
+{
+    int ret = -1;
+
+    if(conn && conn->xids[2] > 0)
+    {
+        xmap_drop_cache(xmap, conn->xids[2]);
+        conn->over_estate(conn);
+        conn->xids[2] = 0;
+    }
+    return ret;
+}
 
 /* OOB data handler for httpd */
 int httpd_oob_handler(CONN *conn, CB_DATA *oob)
@@ -883,8 +899,11 @@ int traced_data_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *ch
         conn->over_estate(conn);
         if(xhead->cmd == DBASE_RESP_GET)
         {
-            httpd_out_handler(xhead->index, chunk->data, chunk->ndata);
-            ret = 0;
+            if(httpd_out_handler(xhead) != 0)
+            {
+                xmap_drop_cache(xmap, xhead->cid);
+            }
+            else ret = 0;
         }
         if(conn->groupid) conn->over_session(conn);
         else conn->close(conn);
@@ -913,11 +932,17 @@ int traced_error_handler(CONN *conn, CB_DATA *packet, CB_DATA *cache, CB_DATA *c
 int traced_quick_handler(CONN *conn, CB_DATA *packet)
 {
     DBHEAD *head = NULL;
+    char *block = NULL;
     int ret = -1;
 
     if(conn && packet && (head = (DBHEAD *)packet->data))
     {
         ACCESS_LOGGER(logger, "QUICK{cmd:%d qid:%d key:%llu} on %s:%d", head->cmd, head->qid, (uint64_t)head->id, conn->remote_ip, conn->remote_port);
+        if((head->cid = xmap_truncate_block(xmap, head->length, &block)) > 0 && block)
+        {
+            conn->wait_estate(conn);
+            conn->store_chunk(conn, block, head->length);
+        }
         ret = head->length;
     }
     return ret;
@@ -1245,6 +1270,8 @@ int sbase_initialize(SBASE *sbase, char *conf)
     httpd->session.data_handler = &httpd_data_handler;
     httpd->session.timeout_handler = &httpd_timeout_handler;
     httpd->session.oob_handler = &httpd_oob_handler;
+    httpd->session.error_handler = &httpd_error_handler;
+    httpd->session.sendover_handler = &httpd_sendover_handler;
     /* trackerd */
     if((trackerd = service_init()) == NULL)
     {

@@ -355,8 +355,8 @@ int xmap_set_groupid(XMAP *xmap, int diskid, int groupid)
 /* get diskid */
 int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
 {
+    int ret = -1, id = 0, n = 0, nodeid = 0;
     char line[XM_PATH_MAX];
-    int ret = -1, id = 0, n = 0;
 
     if(xmap && ip && port > 0 && (n = sprintf(line, "%s:%d", ip, port)) > 0)
     {
@@ -371,6 +371,15 @@ int xmap_diskid(XMAP *xmap, char *ip, int port, int *groupid)
             xmap->disks[id].groupid = -1;
             *groupid = XM_NO_GROUPID;
             xmap->disks[id].last = time(NULL);
+            id = xmap->state->node_id_max + 1;
+            if((nodeid = mmtrie_add(xmap->kmap, ip, strlen(ip), id)) == id)
+            {
+                xmap->state->nodes[nodeid].ip = (int)inet_addr(ip);
+                xmap->state->node_id_max++;
+            }
+            n = xmap->state->nodes[nodeid].ndisks++;
+            xmap->state->nodes[nodeid].disks[n] = ret;
+            fprintf(stdout, "nodeid:%d diskid:%d\n", nodeid, ret);
         }
         else
         {
@@ -410,9 +419,9 @@ int xmap_reset_masks(XMAP *xmap, int diskid)
 /* return diskid */
 int xmap_set_disk(XMAP *xmap, MDISK *disk)
 {
+    int ret = -1, id = 0, n = 0, nodeid = 0;
+    char line[XM_PATH_MAX], *p = NULL;
     unsigned char *ch = NULL;
-    char line[XM_PATH_MAX];
-    int ret = -1, id = 0, n = 0;
 
     if(xmap && disk && disk->ip && disk->port > 0 
             && (ch = (unsigned char *)&(disk->ip))
@@ -425,6 +434,16 @@ int xmap_set_disk(XMAP *xmap, MDISK *disk)
         {
             xmap->state->disk_id_max++;
             CHECK_XMDISKIO(xmap,id);
+            p = strchr(line, ':'); *p = 0;
+            n = p - line;
+            id = xmap->state->node_id_max + 1;
+            if((nodeid = mmtrie_add(xmap->kmap, line, n, id)) == id)
+            {
+                xmap->state->nodes[nodeid].ip = disk->ip;
+                xmap->state->node_id_max++;
+            }
+            n = xmap->state->nodes[nodeid].ndisks++;
+            xmap->state->nodes[nodeid].disks[n] = ret;
         }
         disk->groupid = xmap->disks[ret].groupid;
         memcpy(&(xmap->disks[ret]), disk, sizeof(MDISK));
@@ -453,35 +472,41 @@ int xmap_get_disk_host(XMAP *xmap, int diskid, char *ip, int *port)
 /* lisk all disks */
 int xmap_list_disks(XMAP *xmap, char *out)
 {
-    int ret = -1, i = 0, j = 0;
+    int ret = -1, i = 0, j = 0, k = 0, id = 0;
     char *p = NULL, *pp = NULL;
     unsigned char *s = NULL;
 
-    if(xmap && (p = out) && xmap->state->disk_id_max > 0)
+    if(xmap && (p = out) && xmap->state->node_id_max > 0)
     {
         p += sprintf(p, "({'disklist':{");
         pp = p;
-        for(i = 1; i <= xmap->state->disk_id_max; i++) 
+        for(k = 1; k <= xmap->state->node_id_max; k++) 
         {
-            s = (unsigned char *)&(xmap->disks[i].ip);
-            p += sprintf(p, "'%d':{'ip':'%d.%d.%d.%d','sport':'%d','mode':'%d','total':'%u','left':'%llu','all':'%llu', 'limit':'%llu'", i, s[0], s[1], s[2], s[3], xmap->disks[i].port, xmap->disks[i].mode, xmap->disks[i].total, LLU(xmap->disks[i].left), LLU(xmap->disks[i].all), LLU(xmap->disks[i].limit));
-            if(xmap->disks[i].nmasks > 0)
+            s = (unsigned char *)&(xmap->state->nodes[k].ip);
+            p += sprintf(p, "'%d':{'ip':'%d.%d.%d.%d','disks':{", k, s[0], s[1], s[2], s[3]);
+            for(i = 0; i < xmap->state->nodes[k].ndisks; i++)
             {
-                p += sprintf(p, ", 'masks':{");
-                for(j = 0; j < xmap->disks[i].nmasks; j++)
+                id = xmap->state->nodes[k].disks[i];
+                p += sprintf(p, "'%d':{'id':'%d','sport':'%d','mode':'%d','total':'%u','left':'%llu','all':'%llu','limit':'%llu'", i, id, xmap->disks[id].port, xmap->disks[id].mode, xmap->disks[id].total, LLU(xmap->disks[id].left), LLU(xmap->disks[id].all), LLU(xmap->disks[id].limit));
+                if(xmap->disks[id].nmasks > 0)
                 {
-                    if(xmap->disks[i].masks[j])
+                    p += sprintf(p, ", 'masks':{");
+                    for(j = 0; j < xmap->disks[id].nmasks; j++)
                     {
-                        s = ((unsigned char *)&(xmap->disks[i].masks[j]));
-                        if(j == (xmap->disks[i].nmasks - 1))
-                            p += sprintf(p, "'%d':'%d.%d.%d.%d'", j, s[0], s[1], s[2], s[3]);
-                        else
-                            p += sprintf(p, "'%d':'%d.%d.%d.%d', ", j, s[0], s[1], s[2], s[3]);
+                        if(xmap->disks[id].masks[j])
+                        {
+                            s = ((unsigned char *)&(xmap->disks[id].masks[j]));
+                            if(j == (xmap->disks[id].nmasks - 1))
+                                p += sprintf(p, "'%d':'%d.%d.%d.%d'", j, s[0], s[1], s[2], s[3]);
+                            else
+                                p += sprintf(p, "'%d':'%d.%d.%d.%d', ", j, s[0], s[1], s[2], s[3]);
+                        }
                     }
+                    p += sprintf(p, "}");
                 }
-                p += sprintf(p, "}");
+                p += sprintf(p, "},");
             }
-            p += sprintf(p, "},");
+            p += sprintf(p, "}},");
         }
         if(p > pp) --p;
         p += sprintf(p, "}})");
