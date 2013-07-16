@@ -68,6 +68,9 @@ typedef struct _DBHEAD
     short           cmd;
     ushort          index;
     ushort          port;
+    ushort          flag;
+    ushort          tabid;
+    uint32_t        userid;
     int             cid;
     int             ssize;/* source size */
     int             qid;
@@ -111,6 +114,10 @@ typedef struct _BELEMENT
 #define BJSON_TYPE_BLOB    0x10
 #define BJSON_TYPE_OBJECT  0x20
 #define BJSON_TYPE_ALL     0x3f
+#define IMG_TYPE_JPG       0x40
+#define IMG_TYPE_PNG       0x80
+#define IMG_TYPE_BMP       0x100
+#define IMG_TYPE_GIF       0x200
 #define BJSON_PASS         0x100
 /* db bjson */
 typedef struct _BJSON

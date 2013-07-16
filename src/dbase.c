@@ -1117,8 +1117,6 @@ int bjson_to_json(BREC *record, const char *out)
     return n;
 }
 
-
-
 /* rec to element */
 BELEMENT *belement(BREC *record)
 {

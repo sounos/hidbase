@@ -12,11 +12,6 @@
 #include "mmtrie.h"
 #include "logger.h"
 #include "xmm.h"
-#ifdef MAP_LOCKED
-#define MMAP_SHARED MAP_SHARED|MAP_LOCKED
-#else
-#define MMAP_SHARED MAP_SHARED
-#endif
 #define CDB_CHECK_MMAP(xdb, index)                                                          \
 do                                                                                          \
 {                                                                                           \
