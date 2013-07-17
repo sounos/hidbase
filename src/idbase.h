@@ -49,7 +49,6 @@ typedef struct _QSTATE
 }QSTATE;
 typedef struct _IDBASE
 {
-    char basedir[IDB_PATH_MAX];
     RWIO stateio;
     RWIO m32io;
     QSTATE *state;

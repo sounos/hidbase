@@ -61,7 +61,6 @@ IDBASE *idbase_init(char *basedir)
 
     if(basedir && (db = (IDBASE *)xmm_mnew(sizeof(IDBASE))))
     {
-        strcpy(db->basedir, basedir);
         /* logger */
         sprintf(path, "%s/%s", basedir, "db.log");
         idbase_mkdir(path);
@@ -114,7 +113,7 @@ IDBASE *idbase_init(char *basedir)
             pthread_mutex_init(&(db->mutexs[i]), NULL);
         }
 #endif
-        sprintf(path, "%s/node.m32", basedir);
+        sprintf(path, "%s/db.m32", basedir);
         if((db->m32io.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
                 && fstat(db->m32io.fd, &st) == 0)
         {
@@ -218,14 +217,14 @@ int idbase_build(IDBASE *db, int64_t key, MRECORD *record)
             while(id >= db->state->m32[i].max)
             {
                 old = db->m32io.end;
-                db->m32io.end += (off_t) IDB_INCRE_NUM * (off_t)sizeof(unsigned int);
+                db->m32io.end += (off_t) IDB_INCRE_NUM * (off_t)sizeof(int);
                 ftruncate(db->m32io.fd, db->m32io.end);
                 memset((char *)(db->m32io.map) + old, 0, db->m32io.end - old);
                 db->state->m32[i].max += IDB_INCRE_NUM;
                 n = db->state->m32[i].hmap_max++;
-                db->state->m32[i].hmap[n] = (off_t)old / (off_t)sizeof(unsigned int);
+                db->state->m32[i].hmap[n] = (off_t)old / (off_t)sizeof(int);
             }
-            xid = db->state->m32[i].hmap[(id / IDB_HMAP_MAX)] + (id % IDB_INCRE_NUM);
+            xid = db->state->m32[i].hmap[(id/IDB_INCRE_NUM)] + (id % IDB_INCRE_NUM);
             if(db->m32[xid] > 0)
             {
                 db->m32[xid] = mm32_rebuild(db->mm32, db->state->m32[i].roots[k], db->m32[xid], record->m32[i]);
