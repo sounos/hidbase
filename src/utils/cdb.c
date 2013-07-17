@@ -851,6 +851,7 @@ int cdb__resize(CDB *db, int id, int length)
             ACCESS_LOGGER(db->logger, "push_block() blockid:%d index:%d block_size:%d", old_lnk.blockid, old_lnk.index, old_lnk.count * CDB_BASE_SIZE);
             cdb_push_block(db, old_lnk.index, old_lnk.blockid, old_lnk.count * CDB_BASE_SIZE);
         }
+        ret = id;
     }
     return ret;
 }
@@ -1100,6 +1101,24 @@ void *cdb_truncate_block(CDB *db, int id, int ndata)
     return ret;
 }
 
+/* resize block */
+void *cdb_resize_block(CDB *db, int id, int size)
+{
+    void *ret = NULL;
+    int index = -1;
+    DBX *dbx = NULL;
+    if(db && id > 0)
+    {
+        if(cdb__resize(db, id, size) > 0 && (db->state->mode & CDB_USE_MMAP)
+            && (dbx = (DBX *)(db->dbxio.map)) && (index = dbx[id].index) >= 0
+            && db->dbsio[index].map)
+        {
+            ret = db->dbsio[index].map+(off_t)dbx[id].blockid*(off_t)CDB_BASE_SIZE;
+        }
+    }
+    return ret;
+}
+
 /* get data block address and len */
 int cdb_exists_block(CDB *db, int id, char **ptr)
 {
@@ -1108,7 +1127,7 @@ int cdb_exists_block(CDB *db, int id, char **ptr)
 
     if(db && id > 0 && ptr && db->state && (db->state->mode & CDB_USE_MMAP)
             && (dbx = (DBX *)(db->dbxio.map)) && (index = dbx[id].index) >= 0
-            && dbx[id].ndata > 0 && db->dbsio[index].map)
+            && db->dbsio[index].map)
     {
         *ptr = db->dbsio[index].map+(off_t)dbx[id].blockid*(off_t)CDB_BASE_SIZE;
         n = dbx[id].ndata;

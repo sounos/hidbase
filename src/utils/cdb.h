@@ -30,9 +30,9 @@
 //#define CDB_MFILE_SIZE       33554432   //32M
 //#define CDB_MFILE_SIZE       67108864   //64M
 //#define CDB_MFILE_SIZE        134217728  //128M
-#define CDB_MFILE_SIZE          268435456  //256M
+//#define CDB_MFILE_SIZE          268435456  //256M
 //#define CDB_MFILE_SIZE        536870912  //512M
-//#define CDB_MFILE_SIZE        1073741824 //1G
+#define CDB_MFILE_SIZE        1073741824 //1G
 #define CDB_MFILE_MAX           8129
 #define CDB_BLOCK_INCRE_LEN      0x0
 #define CDB_BLOCK_INCRE_DOUBLE   0x1
@@ -138,6 +138,8 @@ int cdb_xget_data_len(CDB *db, char *key, int nkey);
 int cdb_xcheck(CDB *db, char *key, int nkey, int *len, time_t *mod_time);
 /* truncate block */
 void *cdb_truncate_block(CDB *db, int id, int ndata);
+/* resize block */
+void *cdb_resize_block(CDB *db, int id, int size);
 /* get data block address and len */
 int cdb_exists_block(CDB *db, int id, char **ptr);
 /* read data */
