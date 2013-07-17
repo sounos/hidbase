@@ -3,11 +3,12 @@
 #ifdef HAVE_PTHREAD
 #include <pthread.h>
 #endif
+#define IDB_PATH_MAX   256
 #define IDB_FIELDS_MAX 256
-#define IDB_HASH_MAX   256
+#define IDB_HASH_MAX   512
 #define IDB_MUTEX_MAX  8192
-#define IDB_BASE_NUM   100000
-#define IDB_INCR_NUM   100000
+#define IDB_INCRE_NUM  1000000
+#define IDB_NODE_MAX   2000000000
 typedef struct _MRECORD
 {
     int     bits;
@@ -28,10 +29,12 @@ typedef struct _RWIO
 }RWIO;
 typedef struct _QSET
 {
-    int rootid;
-    int dbid;
-    int max;
-    int size;
+    int          roots[IDB_HASH_MAX];
+    int          fd;
+    int          max;
+    unsigned int *map;
+    off_t        end;
+    off_t        size;
 #ifdef HAVE_PTHREAD
     pthread_mutex_t mutex;
 #endif
@@ -47,6 +50,7 @@ typedef struct _QSTATE
 }QSTATE;
 typedef struct _IDBASE
 {
+    char basedir[IDB_PATH_MAX];
     RWIO stateio;
     QSTATE *state;
     void *logger;

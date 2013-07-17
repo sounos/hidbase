@@ -36,7 +36,8 @@ int idbase_mkdir(char *path)
                 while(*p != '\0' && *p == '/' && *(p+1) == '/')++p;
                 if(level > 0)
                 {
-                    *p = '\0';                    memset(&st, 0, sizeof(struct stat));
+                    *p = '\0';
+                    memset(&st, 0, sizeof(struct stat));
                     ret = stat(fullpath, &st);
                     if(ret == 0 && !S_ISDIR(st.st_mode)) return -1;
                     if(ret != 0 && mkdir(fullpath, 0755) != 0) return -1;
@@ -60,6 +61,7 @@ IDBASE *idbase_init(char *basedir)
 
     if(basedir && (db = (IDBASE *)xmm_mnew(sizeof(IDBASE))))
     {
+        strcpy(db->basedir, basedir);
         /* logger */
         sprintf(path, "%s/%s", basedir, "db.log");
         idbase_mkdir(path);
@@ -111,13 +113,26 @@ IDBASE *idbase_init(char *basedir)
         {
             pthread_mutex_init(&(db->mutexs[i]), NULL);
         }
+#endif
+        sprintf(path, "%s/mm/", basedir);
+        idbase_mkdir(path);
         for(i = 0; i < IDB_FIELDS_MAX; i++)
         {
+            if(db->state->m32[i].max > 0)
+            {
+                sprintf(path, "%s/mm/%d.m32", basedir, i);
+                if((db->state->m32[i].fd = open(path, O_CREAT|O_RDWR, 0644)) > 0)
+                {
+                    db->state->m32[i].map = (unsigned int *)mmap(NULL, db->state->m32[i].size, 
+                            PROT_READ|PROT_WRITE, MAP_SHARED, db->state->m32[i].fd, 0);
+                }
+            }
+#ifdef HAVE_PTHREAD
             pthread_mutex_init(&(db->state->m32[i].mutex), NULL);
             pthread_mutex_init(&(db->state->m64[i].mutex), NULL);
             pthread_mutex_init(&(db->state->m96[i].mutex), NULL);
-        } 
 #endif
+        } 
     }
     return db;
 }
@@ -178,39 +193,43 @@ int idbase_db_id(IDBASE *db)
 /* build index */
 int idbase_build(IDBASE *db, int64_t key, MRECORD *record)
 {
-    int ret = -1, id = 0, i = 0, n = 0, old = 0, *lists = NULL;
-    int32_t *m32 = NULL;
-    int64_t *m64 = NULL;
-    double  *m96 = NULL;
+    int ret = -1, id = 0, i = 0, k = 0;
+    char path[IDB_PATH_MAX];
+    off_t old = 0;
 
     if(db && key && record && (id = idbase_kid(db, key)) > 0)
     {
+        k = id % IDB_HASH_MAX;
         for(i = 0; i < record->m32_num; i++) 
         {
             IDB_MUTEX_LOCK(db->state->m32[i].mutex);
-            if(db->state->m32[i].rootid == 0) 
-                db->state->m32[i].rootid = mm32_new_tree(db->mm32);
-            if(db->state->m32[i].dbid == 0)
-                db->state->m32[i].dbid = idbase_db_id(db); 
-            lists = NULL;
-            if(id <= db->state->m32[i].max)
+            if(db->state->m32[i].roots[k] == 0) 
+                db->state->m32[i].roots[k] = mm32_new_tree(db->mm32);
+            if(id >= db->state->m32[i].max)
             {
-                old = db->state->m32[i].size;
-                db->state->m32[i].size = ((db->state->m32[i].max + IDB_INCR_NUM) * sizeof(int));
-                cdb_resize_block(db->mdb, db->state->m32[i].dbid, db->state->m32[i].size);
-                n = cdb_exists_block(db->mdb, db->state->m32[i].dbid, (char **)&lists); 
-                if(lists) memset((char *)lists + old, 0, sizeof(int) * IDB_INCR_NUM);
-                db->state->m32[i].max += IDB_INCR_NUM;
+                old = db->state->m32[i].end;
+                if(db->state->m32[i].max == 0)
+                {
+                    sprintf(path, "%s/mm/%d.m32", db->basedir, i);
+                    db->state->m32[i].size = (off_t)IDB_NODE_MAX * (off_t)sizeof(unsigned int);
+                    if((db->state->m32[i].fd = open(path, O_CREAT|O_RDWR, 0644)) > 0)
+                    {
+                        db->state->m32[i].map = (unsigned int*)mmap(NULL, db->state->m32[i].size,
+                                PROT_READ|PROT_WRITE, MAP_SHARED, db->stateio.fd, 0);
+                    }
+                }
+                db->state->m32[i].max = ((id / IDB_INCRE_NUM) + 1) * IDB_INCRE_NUM;
+                db->state->m32[i].end = (off_t)db->state->m32[i].max * (off_t)sizeof(unsigned int);
+                ftruncate(db->state->m32[i].fd, db->state->m32[i].end);
+                memset((char *)(db->state->m32[i].map) + old, 0, db->state->m32[i].end - old);
             }
-            if(lists == NULL) 
-                n = cdb_exists_block(db->mdb, db->state->m32[i].dbid, (char **)&lists);
-            if(lists[id] > 0)
+            if(db->state->m32[i].map[id] > 0)
             {
-                lists[id] = mm32_rebuild(db->mm32, db->state->m32[i].rootid, lists[id], record->m32[i]);
+                db->state->m32[i].map[id] = mm32_rebuild(db->mm32, db->state->m32[i].roots[k], db->state->m32[i].map[id], record->m32[i]);
             }
             else
             {
-                lists[id] = mm32_build(db->mm32, db->state->m32[i].rootid, record->m32[i], id);
+                db->state->m32[i].map[id] = mm32_build(db->mm32, db->state->m32[i].roots[k], record->m32[i], id);
             }
             IDB_MUTEX_UNLOCK(db->state->m32[i].mutex);
         }
@@ -235,13 +254,22 @@ void idbase_close(IDBASE *db)
         {
             pthread_mutex_destroy(&(db->mutexs[i]));
         }
+#endif
         for(i = 0; i < IDB_FIELDS_MAX; i++)
         {
+            if(db->state->m32[i].map) munmap(db->state->m32[i].map, db->state->m32[i].size);
+            db->state->m32[i].map = NULL;
+            if(db->state->m32[i].fd > 0)
+            {
+                close(db->state->m32[i].fd);
+                db->state->m32[i].fd = 0;
+            }
+#ifdef HAVE_PTHREAD
             pthread_mutex_destroy(&(db->state->m32[i].mutex));
             pthread_mutex_destroy(&(db->state->m64[i].mutex));
             pthread_mutex_destroy(&(db->state->m96[i].mutex));
-        }
 #endif
+        }
         LOGGER_CLEAN(db->logger);
         MUTEX_DESTROY(db->mutex);
         xmm_free(db, sizeof(IDBASE));
@@ -265,7 +293,7 @@ int main()
         TIMER_INIT(timer);
         for(i = 0; i < num; i++)
         {
-            record.m32_num = 32;
+            record.m32_num = 8;
             for(j = 0; j < record.m32_num; j++) 
             {
                 record.m32[j] = rand();;

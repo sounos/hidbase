@@ -71,7 +71,7 @@ do                                                                              
 {                                                                                   \
     if(x &&  MM32(x)->end <  MM32(x)->size)                                         \
     {                                                                               \
-        MM32(x)->old += MM32(x)->end ;                                              \
+        MM32(x)->old = MM32(x)->end ;                                              \
         MM32(x)->end += (off_t)MM32_INCRE_NUM * (off_t)sizeof(MM32NODE);            \
         if(ftruncate(MM32(x)->fd, MM32(x)->end) == 0)                               \
         {                                                                           \
