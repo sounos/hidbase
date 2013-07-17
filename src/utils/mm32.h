@@ -3,7 +3,7 @@
 #include "mutex.h"
 #define MM32_INCRE_NUM    1000000
 #define MM32_NODES_MAX    2000000000
-#define MM32_ROOT_MAX     131072
+#define MM32_ROOT_MAX     262144
 typedef struct _MM32NODE
 {
     unsigned int left;
