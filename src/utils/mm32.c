@@ -347,8 +347,8 @@ unsigned int mm32_total(void *x, int rootid)
     return total;
 }
 
-/* push */
-unsigned int mm32_push(void *x, int rootid, int key, int data, int *old)
+/* build */
+unsigned int mm32_build(void *x, int rootid, int key, int data)
 {
     unsigned int id = 0, nodeid = 0, rid = 0, lid = 0, uid = 0, pid = 0, 
         gpid = 0, ppid = 0, *prootid = NULL;
@@ -425,6 +425,24 @@ end:
     }
     return id;
 }
+
+/* rebuild */
+unsigned int mm32_rebuild(void *x, int rootid, unsigned int nodeid, int key)
+{
+    int ret = nodeid, data = 0;
+    MM32NODE *node = NULL;
+
+    if(x && rootid > 0 && nodeid > 0 && (node = &(MM32(x)->map[nodeid])))
+    {
+        if(node->key != key)
+        {
+            mm32_remove(x, rootid, nodeid, NULL, &data);
+            ret = mm32_build(x, rootid, key, data);
+        }
+    }
+    return ret;
+}
+
 
 /* insert new node */
 unsigned int mm32_insert(void *x, int rootid, int key, int data, int *old)

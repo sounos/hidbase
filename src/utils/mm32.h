@@ -10,8 +10,8 @@ typedef struct _MM32NODE
     unsigned int right;
     unsigned int parent;
     unsigned int color;
+    int32_t key;
     int data;
-    int key;
 }MM32NODE;
 typedef struct _MM32ROOT
 {
@@ -53,7 +53,8 @@ int mm32_new_tree(void *mm32);
 unsigned int mm32_total(void *mm32, int rootid);
 unsigned int mm32_try_insert(void *mm32, int rootid, int key, int data, int *old);
 unsigned int mm32_insert(void *mm32, int rootid, int key, int data, int *old);
-unsigned int mm32_push(void *mm32, int rootid, int key, int data, int *old);
+unsigned int mm32_build(void *mm32, int rootid, int key, int data);
+unsigned int mm32_rebuild(void *mm32, int rootid, unsigned int nodeid, int key);
 unsigned int mm32_get(void *mm32, unsigned int nodeid, int *key, int *data);
 unsigned int mm32_find(void *mm32, int rootid, int key, int *data);
 unsigned int mm32_find_gt(void *mm32, int rootid, int key, int *data);

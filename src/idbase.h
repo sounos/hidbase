@@ -4,22 +4,20 @@
 #include <pthread.h>
 #endif
 #define IDB_FIELDS_MAX 256
+#define IDB_HASH_MAX   256
 #define IDB_MUTEX_MAX  8192
-typedef struct _M32
+#define IDB_BASE_NUM   100000
+#define IDB_INCR_NUM   100000
+typedef struct _MRECORD
 {
-    int32_t val;
-    unsigned int nodeid;
-}M32;
-typedef struct M64
-{
-    int64_t val;
-    unsigned int nodeid;
-}M64;
-typedef struct _M96
-{
-    double val;
-    unsigned int nodeid;
-}M96;
+    int     bits;
+    int     m32_num;
+    int     m64_num;
+    int     m96_num;
+    int32_t m32[IDB_FIELDS_MAX];
+    int64_t m64[IDB_FIELDS_MAX];
+    double  m96[IDB_FIELDS_MAX];
+}MRECORD;
 typedef struct _RWIO
 {
     int     fd;
@@ -32,15 +30,17 @@ typedef struct _QSET
 {
     int rootid;
     int dbid;
-    int id_max;
+    int max;
+    int size;
 #ifdef HAVE_PTHREAD
     pthread_mutex_t mutex;
 #endif
 }QSET;
 typedef struct _QSTATE
 {
-    int rootid;
-    int id_max;
+    int db_id_max;
+    int kid_max;
+    int roots[IDB_HASH_MAX];
     QSET m32[IDB_FIELDS_MAX];
     QSET m64[IDB_FIELDS_MAX];
     QSET m96[IDB_FIELDS_MAX];
@@ -54,14 +54,12 @@ typedef struct _IDBASE
     void *mm32;
     void *mm64;
     void *mm96;
+    void *mdb;
     void *mutex;
 #ifdef HAVE_PTHREAD
     pthread_mutex_t mutexs[IDB_MUTEX_MAX];
 #endif
 }IDBASE;
 IDBASE *idbase_init(char *basedir);
-int idbase_update(IDBASE *idb, int64_t key);
-int idbase_del(IDBASE *idb, int64_t key);
-int idbase_query(IDBASE *idb);
 void idbase_close(IDBASE *idb);
 #endif

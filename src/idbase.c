@@ -54,38 +54,38 @@ int idbase_mkdir(char *path)
 IDBASE *idbase_init(char *basedir)
 {
     struct stat st = {0};
-    IDBASE *idb = NULL;
+    IDBASE *db = NULL;
     char path[1024];
     int i = 0;
 
-    if(basedir && (idb = (IDBASE *)xmm_mnew(sizeof(IDBASE))))
+    if(basedir && (db = (IDBASE *)xmm_mnew(sizeof(IDBASE))))
     {
         /* logger */
-        sprintf(path, "%s/%s", basedir, "idb.log");
+        sprintf(path, "%s/%s", basedir, "db.log");
         idbase_mkdir(path);
-        LOGGER_INIT(idb->logger, path);
+        LOGGER_INIT(db->logger, path);
         sprintf(path, "%s/%s", basedir, "xdb.state");
-        if((idb->stateio.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
-                && fstat(idb->stateio.fd, &st) == 0)
+        if((db->stateio.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
+                && fstat(db->stateio.fd, &st) == 0)
         {
-            if((idb->stateio.map = mmap(NULL, sizeof(QSTATE), PROT_READ|PROT_WRITE,
-                            MAP_SHARED, idb->stateio.fd, 0)) == NULL
-                    || idb->stateio.map == (void *)-1)
+            if((db->stateio.map = mmap(NULL, sizeof(QSTATE), PROT_READ|PROT_WRITE,
+                            MAP_SHARED, db->stateio.fd, 0)) == NULL
+                    || db->stateio.map == (void *)-1)
             {
-                FATAL_LOGGER(idb->logger, "mmap state:%s failed, %s", path, strerror(errno));
+                FATAL_LOGGER(db->logger, "mmap state:%s failed, %s", path, strerror(errno));
                 _exit(-1);
             }
-            idb->state = (QSTATE *)(idb->stateio.map);
-            idb->stateio.end = st.st_size;
+            db->state = (QSTATE *)(db->stateio.map);
+            db->stateio.end = st.st_size;
             if(st.st_size == 0)
             {
-                idb->stateio.end = idb->stateio.size = sizeof(QSTATE);
-                if(ftruncate(idb->stateio.fd, idb->stateio.end) != 0)
+                db->stateio.end = db->stateio.size = sizeof(QSTATE);
+                if(ftruncate(db->stateio.fd, db->stateio.end) != 0)
                 {
-                    FATAL_LOGGER(idb->logger, "ftruncate state %s failed, %s", path, strerror(errno));
+                    FATAL_LOGGER(db->logger, "ftruncate state %s failed, %s", path, strerror(errno));
                     _exit(-1);
                 }
-                memset(idb->state, 0, sizeof(QSTATE));
+                memset(db->state, 0, sizeof(QSTATE));
             }
         }
         else
@@ -94,30 +94,35 @@ IDBASE *idbase_init(char *basedir)
             _exit(-1);
         }
         /* id map */
-        sprintf(path, "%s/%s", basedir, "idb.map");
-        idb->map = mmtree64_init(path);
-        if(idb->state->rootid < 1)
-            idb->state->rootid = mmtree64_new_tree(idb->map);
-        sprintf(path, "%s/%s", basedir, "idb.mm32");
-        idb->mm32 = mm32_init(path);
-        MUTEX_INIT(idb->mutex);
+        sprintf(path, "%s/%s", basedir, "db.map");
+        db->map = mmtree64_init(path);
+        for(i = 0; i < IDB_HASH_MAX; i++)
+        {
+            if(db->state->roots[i] < 1)
+                db->state->roots[i] = mmtree64_new_tree(db->map);
+        }
+        sprintf(path, "%s/%s", basedir, "db.mm32");
+        db->mm32 = mm32_init(path);
+        sprintf(path, "%s/%s", basedir, "mdb/");
+        db->mdb = cdb_init(path, CDB_USE_MMAP);
+        MUTEX_INIT(db->mutex);
 #ifdef HAVE_PTHREAD
         for(i = 0; i < IDB_MUTEX_MAX; i++)
         {
-            pthread_mutex_init(&(idb->mutexs[i]), NULL);
+            pthread_mutex_init(&(db->mutexs[i]), NULL);
         }
         for(i = 0; i < IDB_FIELDS_MAX; i++)
         {
-            pthread_mutex_init(&(idb->state->m32[i].mutex), NULL);
-            pthread_mutex_init(&(idb->state->m64[i].mutex), NULL);
-            pthread_mutex_init(&(idb->state->m96[i].mutex), NULL);
+            pthread_mutex_init(&(db->state->m32[i].mutex), NULL);
+            pthread_mutex_init(&(db->state->m64[i].mutex), NULL);
+            pthread_mutex_init(&(db->state->m96[i].mutex), NULL);
         } 
 #endif
     }
-    return idb;
+    return db;
 }
 
-void idb_mutex_lock(IDBASE *db, int id)
+void idbase_mutex_lock(IDBASE *db, int id)
 {
     if(db)
     {
@@ -128,7 +133,7 @@ void idb_mutex_lock(IDBASE *db, int id)
     return ;
 }
 
-void idb_mutex_unlock(IDBASE *db, int id)
+void idbase_mutex_unlock(IDBASE *db, int id)
 {
     if(db)
     {
@@ -139,45 +144,137 @@ void idb_mutex_unlock(IDBASE *db, int id)
     return ;
 }
 
+/* kid */
+int idbase_kid(IDBASE *db, int64_t key)
+{
+    int id = 0, old = 0, x = 0;
+
+    if(db && key)
+    {
+        MUTEX_LOCK(db->mutex);
+        x = db->state->kid_max + 1;
+        mmtree64_try_insert(db->map, db->state->roots[key % IDB_HASH_MAX], key, x, &old);
+        if(old == 0) id = ++(db->state->kid_max);
+        else id = old;
+        MUTEX_UNLOCK(db->mutex);
+    }
+    return id;
+}
+
+/* new db id*/
+int idbase_db_id(IDBASE *db)
+{
+    int id = 0;
+
+    if(db)
+    {
+        MUTEX_LOCK(db->mutex);
+        id = ++db->state->db_id_max;
+        MUTEX_UNLOCK(db->mutex);
+    }
+    return id;
+}
+
+/* build index */
+int idbase_build(IDBASE *db, int64_t key, MRECORD *record)
+{
+    int ret = -1, id = 0, i = 0, n = 0, old = 0, *lists = NULL;
+    int32_t *m32 = NULL;
+    int64_t *m64 = NULL;
+    double  *m96 = NULL;
+
+    if(db && key && record && (id = idbase_kid(db, key)) > 0)
+    {
+        for(i = 0; i < record->m32_num; i++) 
+        {
+            IDB_MUTEX_LOCK(db->state->m32[i].mutex);
+            if(db->state->m32[i].rootid == 0) 
+                db->state->m32[i].rootid = mm32_new_tree(db->mm32);
+            if(db->state->m32[i].dbid == 0)
+                db->state->m32[i].dbid = idbase_db_id(db); 
+            lists = NULL;
+            if(id <= db->state->m32[i].max)
+            {
+                old = db->state->m32[i].size;
+                db->state->m32[i].size = ((db->state->m32[i].max + IDB_INCR_NUM) * sizeof(int));
+                cdb_resize_block(db->mdb, db->state->m32[i].dbid, db->state->m32[i].size);
+                n = cdb_exists_block(db->mdb, db->state->m32[i].dbid, (char **)&lists); 
+                if(lists) memset((char *)lists + old, 0, sizeof(int) * IDB_INCR_NUM);
+                db->state->m32[i].max += IDB_INCR_NUM;
+            }
+            if(lists == NULL) 
+                n = cdb_exists_block(db->mdb, db->state->m32[i].dbid, (char **)&lists);
+            if(lists[id] > 0)
+            {
+                lists[id] = mm32_rebuild(db->mm32, db->state->m32[i].rootid, lists[id], record->m32[i]);
+            }
+            else
+            {
+                lists[id] = mm32_build(db->mm32, db->state->m32[i].rootid, record->m32[i], id);
+            }
+            IDB_MUTEX_UNLOCK(db->state->m32[i].mutex);
+        }
+    }
+    return ret;
+}
+
 /* close db */
-void idbase_close(IDBASE *idb)
+void idbase_close(IDBASE *db)
 {
     int i = 0;
 
-    if(idb)
+    if(db)
     {
-        mmtree64_close(idb->map);
-        mm32_close(idb->mm32);
-        if(idb->stateio.map)munmap(idb->stateio.map, idb->stateio.end);
-        if(idb->stateio.fd)close(idb->stateio.fd);
+        cdb_clean(db->mdb);
+        mmtree64_close(db->map);
+        mm32_close(db->mm32);
+        if(db->stateio.map)munmap(db->stateio.map, db->stateio.end);
+        if(db->stateio.fd)close(db->stateio.fd);
 #ifdef HAVE_PTHREAD
         for(i = 0; i < IDB_MUTEX_MAX; i++)
         {
-            pthread_mutex_destroy(&(idb->mutexs[i]));
+            pthread_mutex_destroy(&(db->mutexs[i]));
         }
         for(i = 0; i < IDB_FIELDS_MAX; i++)
         {
-            pthread_mutex_destroy(&(idb->state->m32[i].mutex));
-            pthread_mutex_destroy(&(idb->state->m64[i].mutex));
-            pthread_mutex_destroy(&(idb->state->m96[i].mutex));
+            pthread_mutex_destroy(&(db->state->m32[i].mutex));
+            pthread_mutex_destroy(&(db->state->m64[i].mutex));
+            pthread_mutex_destroy(&(db->state->m96[i].mutex));
         }
 #endif
-        LOGGER_CLEAN(idb->logger);
-        MUTEX_DESTROY(idb->mutex);
-        xmm_free(idb, sizeof(IDBASE));
+        LOGGER_CLEAN(db->logger);
+        MUTEX_DESTROY(db->mutex);
+        xmm_free(db, sizeof(IDBASE));
     }
     return ;
 }
 
 #ifdef _DEBUG_IDB
 //gcc -o mdb idbase.c -I utils/ utils/mm32.c utils/mmtree64.c utils/cdb.c utils/logger.c utils/xmm.c utils/mmtrie.c -DHAVE_PTHREAD -D_DEBUG_IDB && ./mdb
+#include "timer.h"
 int main()
 {
-    IDBASE *idb = NULL;
+    int i = 0, j = 0, num = 10000000;
+    void *timer = NULL;
+    IDBASE *db = NULL;
+    MRECORD record;
 
-    if((idb = idbase_init("/tmp/idb")))
+    if((db = idbase_init("/data/tmp/mdb")))
     {
-        idbase_close(idb);
+        memset(&record, 0, sizeof(MRECORD));
+        TIMER_INIT(timer);
+        for(i = 0; i < num; i++)
+        {
+            record.m32_num = 32;
+            for(j = 0; j < record.m32_num; j++) 
+            {
+                record.m32[j] = rand();;
+            }
+            idbase_build(db, (int64_t)(2000000000 + i), &record);
+        }
+        TIMER_SAMPLE(timer);
+        fprintf(stdout, "time_used:%lld avg:%lld\n", PT_LU_USEC(timer), PT_LU_USEC(timer)/num);
+        idbase_close(db);
     }
     return 0;
 }

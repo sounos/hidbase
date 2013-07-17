@@ -31,8 +31,8 @@
 //#define CDB_MFILE_SIZE       67108864   //64M
 //#define CDB_MFILE_SIZE        134217728  //128M
 //#define CDB_MFILE_SIZE          268435456  //256M
-//#define CDB_MFILE_SIZE        536870912  //512M
-#define CDB_MFILE_SIZE        1073741824 //1G
+#define CDB_MFILE_SIZE        536870912  //512M
+//#define CDB_MFILE_SIZE        1073741824 //1G
 #define CDB_MFILE_MAX           8129
 #define CDB_BLOCK_INCRE_LEN      0x0
 #define CDB_BLOCK_INCRE_DOUBLE   0x1
