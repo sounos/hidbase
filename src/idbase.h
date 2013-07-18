@@ -7,7 +7,7 @@
 #define IDB_FIELDS_MAX 256
 #define IDB_HASH_MAX   1024
 #define IDB_MUTEX_MAX  8192
-#define IDB_INCRE_NUM  100000
+#define IDB_BASE_NUM   100000
 #define IDB_NODE_MAX   2000000000
 #define IDB_HMAP_MAX   20000
 typedef struct _MRECORD
@@ -31,9 +31,9 @@ typedef struct _RWIO
 typedef struct _QSET
 {
     unsigned int  hmap[IDB_HMAP_MAX];        
-    int  roots[IDB_HASH_MAX];
-    int  max;
     int  hmap_max;
+    int  rootid;
+    int  max;
 #ifdef HAVE_PTHREAD
     pthread_mutex_t mutex;
 #endif
@@ -42,6 +42,7 @@ typedef struct _QSTATE
 {
     int db_id_max;
     int kid_max;
+    off_t time_used;
     int roots[IDB_HASH_MAX];
     QSET m32[IDB_FIELDS_MAX];
     QSET m64[IDB_FIELDS_MAX];
@@ -53,6 +54,7 @@ typedef struct _IDBASE
     RWIO m32io;
     QSTATE *state;
     void *logger;
+    void *timer;
     unsigned int *m32;
     unsigned int *m64;
     unsigned int *m96;

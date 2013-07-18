@@ -14,6 +14,7 @@
 #include "logger.h"
 #include "mutex.h"
 #include "mmtree64.h"
+#include "timer.h"
 #define IDB_MUTEX_LOCK(xxxx) pthread_mutex_lock(&(xxxx))
 #define IDB_MUTEX_UNLOCK(xxxx) pthread_mutex_unlock(&(xxxx))
 /* mkdir as path*/
@@ -133,7 +134,6 @@ IDBASE *idbase_init(char *basedir)
             fprintf(stderr, "open m32 file:%s failed, %s", path, strerror(errno));
             _exit(-1);
         }
-
         for(i = 0; i < IDB_FIELDS_MAX; i++)
         {
 #ifdef HAVE_PTHREAD
@@ -142,6 +142,7 @@ IDBASE *idbase_init(char *basedir)
             pthread_mutex_init(&(db->state->m96[i].mutex), NULL);
 #endif
         } 
+        TIMER_INIT(db->timer);
     }
     return db;
 }
@@ -166,6 +167,29 @@ void idbase_mutex_unlock(IDBASE *db, int id)
 #endif
     }
     return ;
+}
+#define IDX_INCRE(ppt, type, base)                                                      \
+do                                                                                      \
+{                                                                                       \
+    if(ppt->idxio.map && ppt->idxio.fd > 0)                                             \
+    {                                                                                   \
+        base = ppt->idxio.old = ppt->idxio.end;                                         \
+        ppt->idxio.end += (off_t)sizeof(type) * (off_t)IDB_BASE_NUM;                    \
+        if(ftruncate(ppt->idxio.fd, ppt->idxio.end) != 0) break;                        \
+        memset(ppt->idxio.map + ppt->idxio.old, 0, (ppt->idxio.end - ppt->idxio.old));  \
+    }                                                                                   \
+}while(0)
+
+/* index m32 */
+int idbase_index_m32(IDBASE *db, int fid, unsigned int nodeid, int32_t val, int id)
+{
+    int ret = 0;
+
+    if(db)
+    {
+         
+    }
+    return ret;
 }
 
 /* kid */
@@ -212,27 +236,30 @@ int idbase_build(IDBASE *db, int64_t key, MRECORD *record)
         for(i = 0; i < record->m32_num; i++) 
         {
             IDB_MUTEX_LOCK(db->state->m32[i].mutex);
-            if(db->state->m32[i].roots[k] == 0) 
-                db->state->m32[i].roots[k] = mm32_new_tree(db->mm32);
+            if(db->state->m32[i].rootid == 0) 
+                db->state->m32[i].rootid = mm32_new_tree(db->mm32);
             while(id >= db->state->m32[i].max)
             {
                 old = db->m32io.end;
-                db->m32io.end += (off_t) IDB_INCRE_NUM * (off_t)sizeof(int);
+                db->m32io.end += (off_t) IDB_BASE_NUM * (off_t)sizeof(int);
                 ftruncate(db->m32io.fd, db->m32io.end);
                 memset((char *)(db->m32io.map) + old, 0, db->m32io.end - old);
-                db->state->m32[i].max += IDB_INCRE_NUM;
+                db->state->m32[i].max += IDB_BASE_NUM;
                 n = db->state->m32[i].hmap_max++;
                 db->state->m32[i].hmap[n] = (off_t)old / (off_t)sizeof(int);
             }
-            xid = db->state->m32[i].hmap[(id/IDB_INCRE_NUM)] + (id % IDB_INCRE_NUM);
+            xid = db->state->m32[i].hmap[(id/IDB_BASE_NUM)] + (id % IDB_BASE_NUM);
+            TIMER_SAMPLE(db->timer);
             if(db->m32[xid] > 0)
             {
-                db->m32[xid] = mm32_rebuild(db->mm32, db->state->m32[i].roots[k], db->m32[xid], record->m32[i]);
+                db->m32[xid] = mm32_rebuild(db->mm32, db->state->m32[i].rootid, db->m32[xid], record->m32[i]);
             }
             else
             {
-                db->m32[xid] = mm32_build(db->mm32, db->state->m32[i].roots[k], record->m32[i], id);
+                db->m32[xid] = mm32_build(db->mm32, db->state->m32[i].rootid, record->m32[i], id);
             }
+            TIMER_SAMPLE(db->timer);
+            db->state->time_used += PT_LU_USEC(db->timer);
             IDB_MUTEX_UNLOCK(db->state->m32[i].mutex);
         }
     }
@@ -269,6 +296,7 @@ void idbase_close(IDBASE *db)
         }
         LOGGER_CLEAN(db->logger);
         MUTEX_DESTROY(db->mutex);
+        TIMER_CLEAN(db->timer);
         xmm_free(db, sizeof(IDBASE));
     }
     return ;
@@ -276,7 +304,6 @@ void idbase_close(IDBASE *db)
 
 #ifdef _DEBUG_IDB
 //gcc -o mdb idbase.c -I utils/ utils/mm32.c utils/mmtree64.c utils/cdb.c utils/logger.c utils/xmm.c utils/mmtrie.c -DHAVE_PTHREAD -D_DEBUG_IDB && ./mdb
-#include "timer.h"
 int main()
 {
     int i = 0, j = 0, num = 10000000;
@@ -287,7 +314,6 @@ int main()
     if((db = idbase_init("/data/tmp/mdb")))
     {
         memset(&record, 0, sizeof(MRECORD));
-        TIMER_INIT(timer);
         for(i = 0; i < num; i++)
         {
             record.m32_num = 8;
@@ -297,8 +323,7 @@ int main()
             }
             idbase_build(db, (int64_t)(2000000000 + i), &record);
         }
-        TIMER_SAMPLE(timer);
-        fprintf(stdout, "time_used:%lld avg:%lld\n", PT_LU_USEC(timer), PT_LU_USEC(timer)/num);
+        fprintf(stdout, "time_used:%lld build:%lld avg:%lld\n", PT_USEC_U(db->timer), db->state->time_used, PT_USEC_U(db->timer)/num);
         idbase_close(db);
     }
     return 0;
