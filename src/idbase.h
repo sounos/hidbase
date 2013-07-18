@@ -7,9 +7,9 @@
 #define IDB_FIELDS_MAX 256
 #define IDB_HASH_MAX   1024
 #define IDB_MUTEX_MAX  8192
-#define IDB_INCRE_NUM  1000000
+#define IDB_INCRE_NUM  100000
 #define IDB_NODE_MAX   2000000000
-#define IDB_HMAP_MAX   2000
+#define IDB_HMAP_MAX   20000
 typedef struct _MRECORD
 {
     int     bits;
