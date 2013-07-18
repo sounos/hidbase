@@ -290,7 +290,7 @@ int main()
         TIMER_INIT(timer);
         for(i = 0; i < num; i++)
         {
-            record.m32_num = 4;
+            record.m32_num = 8;
             for(j = 0; j < record.m32_num; j++) 
             {
                 record.m32[j] = rand();;
