@@ -134,6 +134,34 @@ IDBASE *idbase_init(char *basedir)
             fprintf(stderr, "open m32 file:%s failed, %s", path, strerror(errno));
             _exit(-1);
         }
+        sprintf(path, "%s/db.tab32", basedir);
+        if((db->tab32io.fd = open(path, O_CREAT|O_RDWR, 0644)) > 0
+                && fstat(db->tab32io.fd, &st) == 0)
+        {
+            db->tab32io.size = (off_t)sizeof(QTAB)+(off_t)sizeof(QV32) * IDB_NODE_MAX;
+            if((db->tab32io.map = mmap(NULL, db->tab32io.size, PROT_READ|PROT_WRITE,
+                            MAP_SHARED, db->tab32io.fd, 0)) == NULL
+                    || db->tab32io.map == (void *)-1)
+            {
+                FATAL_LOGGER(db->logger, "mmap tab32:%s failed, %s", path, strerror(errno));
+                _exit(-1);
+            }
+            db->tab32 = (QTAB *)(db->tab32io.map);
+            db->tab32io.end = st.st_size;
+            if(st.st_size == 0)
+            {
+                db->tab32io.end = (off_t) sizeof(QTAB);
+                ftruncate(db->tab32io.fd, db->tab32io.end);
+                memset(db->tab32io.map, 0, db->tab32io.end);
+            }
+            db->v32 = (QV32 *)(db->tab32io.map + sizeof(QTAB));
+        }
+        else
+        {
+            fprintf(stderr, "open tab32 file:%s failed, %s", path, strerror(errno));
+            _exit(-1);
+        }
+ 
         for(i = 0; i < IDB_FIELDS_MAX; i++)
         {
 #ifdef HAVE_PTHREAD
@@ -181,13 +209,12 @@ do                                                                              
 }while(0)
 
 /* index m32 */
-int idbase_index_m32(IDBASE *db, int fid, unsigned int nodeid, int32_t val, int id)
+int idbase_index_m32(IDBASE *db, int fid, int32_t val, int id)
 {
-    int ret = 0;
+    int ret = 0, min = 0, max = 0, des = 0;
 
-    if(db)
+    if(db && fid >= 0 && fid < IDB_FIELDS_MAX)
     {
-         
     }
     return ret;
 }
