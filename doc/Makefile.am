@@ -1,17 +1,19 @@
 #automake 
-EXTRA_DIST = rc.hitrackerd.ini rc.hitrackerd.html rc.hitrackerd.init base64.php \
-rc.hichunkd.ini rc.hichunkd.html rc.hichunkd.init hidbase.spec
+EXTRA_DIST = rc.hitrackerd.ini rc.hitrackerd.html rc.hitrackerd base64.php \
+rc.hichunkd.ini rc.hichunkd.html rc.hichunkd  hitrackerd.init hichunkd.init hidbase.spec
 
 install: install-ini
 
 conftodir = "`echo $(sysconfdir)|sed -e 's|/usr/etc|/etc|'`"
 
-initdir = "$(DESTDIR)$(conftodir)/rc.d/init.d"
+initdir = "$(DESTDIR)$(conftodir)/init.d"
+rcdir = "$(DESTDIR)$(conftodir)/rc.d/init.d"
 
 sysconftodir = "$(DESTDIR)$(conftodir)"
 
 htmldir = "`echo @prefix@"/var/html"|sed -e 's|/usr/var|/var|g'`"
 htmltodir = "$(DESTDIR)$(htmldir)"
+isubuntu = "`uname -v|grep Ubuntu`"
 
 install-ini:
 	@echo install *.html to $(htmldir)
@@ -30,10 +32,19 @@ install-ini:
 		$(sysconftodir)/hitrackerd.ini 
 	@echo install hitrackerd.init  hichunkd.init to $(initdir)
 	@test -d $(initdir) || mkdir -p $(initdir)
-	@test -f $(initdir)/hitrackerd \
-		|| cp -p rc.hitrackerd.init $(initdir)/hitrackerd
-	@test -f $(initdir)/hichunkd \
-		|| cp -p rc.hichunkd.init $(initdir)/hichunkd
+	@test -f $(initdir)/functions  || ln -sf $(rcdir)/functions $(initdir)/functions
+	@if [ $(isubuntu) != "" ]; \
+	then \
+		@test -f $(initdir)/hitrackerd \
+			|| cp -p hitrackerd.init $(initdir)/hitrackerd; \
+		@test -f $(initdir)/hichunkd \
+			|| cp -p hichunkd.init $(initdir)/hichunkd; \
+	else \
+		@test -f $(initdir)/hitrackerd \
+			|| cp -p rc.hitrackerd $(initdir)/hitrackerd; \
+		@test -f $(initdir)/hichunkd \
+			|| cp -p rc.hichunkd $(initdir)/hichunkd; \
+	fi 
 	@perl -i -p -e "s@/usr/local/sbin@$(prefix)/sbin@g" $(initdir)/hitrackerd 
 	@perl -i -p -e "s@/usr/local/etc@$(conftodir)@g" $(initdir)/hitrackerd 
 	@perl -i -p -e "s@/usr/local/sbin@$(prefix)/sbin@g" $(initdir)/hichunkd 

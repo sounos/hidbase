@@ -1166,8 +1166,8 @@ void cb_heartbeat_handler(void *arg)
 /* Initialize from ini file */
 int sbase_initialize(SBASE *sbase, char *conf)
 {
-    int i = 0, n = 0, port = 0, mode = 0, interval = 0, ret = -1;
-    char *s = NULL, *p = NULL, *disk = NULL;
+    int i = 0, n = 0, port = 0, mode = 0, interval = 0, ret = -1, pidfd = 0;
+    char *s = NULL, *p = NULL, *disk = NULL, line[1024];
     off_t limit = 0;
 
     if((dict = iniparser_new(conf)) == NULL)
@@ -1190,7 +1190,13 @@ int sbase_initialize(SBASE *sbase, char *conf)
             mtrie_add(argvmap, e_argvs[i], strlen(e_argvs[i]), i+1);
         }
     }
-
+    if((p = iniparser_getstr(dict, "SBASE:pidfile"))
+            && (pidfd = open(p, O_CREAT|O_TRUNC|O_WRONLY, 0644)) > 0)
+    {
+        n = sprintf(line, "%lu", (unsigned long int)getpid());
+        n = write(pidfd, line, n);
+        close(pidfd);
+    }
     /* SBASE */
     sbase->nchilds = iniparser_getint(dict, "SBASE:nchilds", 0);
     sbase->connections_limit = iniparser_getint(dict, "SBASE:connections_limit", SB_CONN_MAX);
