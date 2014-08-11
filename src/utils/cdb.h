@@ -1,21 +1,19 @@
 #include "mutex.h"
 #ifndef _CDB_H_
 #define _CDB_H_
-#ifdef HAVE_PTHREAD
 #include <pthread.h>
-#endif
-#define CDB_LNK_MAX          2097152
+#define CDB_LNK_MAX          8388608
 #define CDB_LNK_INCREMENT    65536
-#define CDB_DBX_MAX          2000000000
-#define CDB_DBX_BASE         1000000
+#define CDB_CDBX_MAX          2000000000
+#define CDB_CDBX_BASE         1000000
 #define CDB_BASE_SIZE        4096
 #define CDB_PATH_MAX         1024
 #define CDB_DIR_FILES        64
 #define CDB_BUF_SIZE         4096
-#define CDB_XBLOCKS_MAX      14
+#define CDB_XBLOCKS_MAX      15
 #define CDB_MBLOCKS_MAX      1024
 #define CDB_MBLOCK_BASE      4096
-#define CDB_MBLOCK_MAX       33554432
+#define CDB_MBLOCK_MAX       67108864
 #define CDB_MUTEX_MAX        65536
 #define CDB_USE_MMAP         0x01
 //#define  CDB_MBLOCK_MAX      1048576
@@ -29,30 +27,30 @@
 //#define CDB_MFILE_SIZE       16777216   //16M
 //#define CDB_MFILE_SIZE       33554432   //32M
 //#define CDB_MFILE_SIZE       67108864   //64M
-//#define CDB_MFILE_SIZE        134217728  //128M
-//#define CDB_MFILE_SIZE          268435456  //256M
-#define CDB_MFILE_SIZE        536870912  //512M
-//#define CDB_MFILE_SIZE        1073741824 //1G
-#define CDB_MFILE_MAX           8129
+//#define CDB_MFILE_SIZE     134217728  //128M
+//#define CDB_MFILE_SIZE       268435456  //256M
+#define CDB_MFILE_SIZE     536870912  //512M
+//#define CDB_MFILE_SIZE       1073741824 //1G
+#define CDB_MFILE_MAX        8192
 #define CDB_BLOCK_INCRE_LEN      0x0
 #define CDB_BLOCK_INCRE_DOUBLE   0x1
-typedef struct _DBX
+typedef struct _CDBX
 {
     int block_size;
     int blockid;
     int ndata;
     int index;
     int mod_time;
-}DBX;
+}CDBX;
 typedef struct _XIO
 {
     int     fd;
-    int     wfd;
+    int     bits;
     char    *map;
-    void    *mutex;
     off_t   old;
     off_t   end;
     off_t   size;
+    pthread_rwlock_t mutex;
 }XIO;
 typedef struct _XLNK
 {
@@ -81,16 +79,12 @@ typedef struct _XSTATE
     int data_len_max;
     int block_incre_mode;
 }XSTATE;
-typedef struct _DB
+typedef struct _CDB
 {
     int     status;
     int     block_max;
     off_t   mm_total;
     off_t   xx_total;
-    MUTEX   *mutex;
-    MUTEX   *mutex_lnk;
-    MUTEX   *mutex_dbx;
-    MUTEX   *mutex_mblock;
     void    *kmap;
     void    *logger;
     XSTATE  *state;
@@ -100,9 +94,11 @@ typedef struct _DB
     XIO     dbsio[CDB_MFILE_MAX];
     XBLOCK  xblocks[CDB_XBLOCKS_MAX];
     char    basedir[CDB_PATH_MAX];
-#ifdef HAVE_PTHREAD
-    pthread_mutex_t mutexs[CDB_MUTEX_MAX];
-#endif
+    pthread_rwlock_t mutex;
+    pthread_rwlock_t mutex_lnk;
+    pthread_rwlock_t mutex_dbx;
+    pthread_rwlock_t mutex_mblock;
+    pthread_rwlock_t mutexs[CDB_MUTEX_MAX];
 }CDB;
 /* initialize db */
 CDB* cdb_init(char *dir, int is_mmap);
@@ -124,6 +120,8 @@ int cdb_xchunk_data(CDB *db, char *key, int nkey, char *data, int ndata, int len
 int cdb_xset_data(CDB *db, char *key, int nkey, char *data, int ndata);
 /* add data */
 int cdb_add_data(CDB *db, int id, char *data, int ndata);
+/* resize */
+int cdb_xresize(CDB *db, char *key, int nkey, int length);
 /* xadd data */
 int cdb_xadd_data(CDB *db, char *key, int nkey, char *data, int ndata);
 /* get data */
@@ -138,8 +136,6 @@ int cdb_xget_data_len(CDB *db, char *key, int nkey);
 int cdb_xcheck(CDB *db, char *key, int nkey, int *len, time_t *mod_time);
 /* truncate block */
 void *cdb_truncate_block(CDB *db, int id, int ndata);
-/* resize block */
-void *cdb_resize_block(CDB *db, int id, int size);
 /* get data block address and len */
 int cdb_exists_block(CDB *db, int id, char **ptr);
 /* read data */
@@ -150,6 +146,7 @@ int cdb_pread_data(CDB *db, int id, char *data, int len, int off);
 int cdb_xread_data(CDB *db, char *key, int nkey, char *data);
 /* xpread data */
 int cdb_xpread_data(CDB *db, char *key, int nkey, char *data, int len, int off);
+char *cdb_new_data(CDB *db, size_t size);
 /* free data */
 void cdb_free_data(CDB *db, char *data, size_t size);
 /* delete data */
@@ -162,5 +159,5 @@ void cdb_destroy(CDB *db);
 void cdb_reset(CDB *db);
 /* clean db */
 void cdb_clean(CDB *db);
-#define PDB(xxx) ((DB *)xxx)
+#define PCDB(xxx) ((CDB *)xxx)
 #endif

@@ -1,18 +1,23 @@
+#include "mutex.h"
 #ifndef _DB_H_
 #define _DB_H_
-#include "mutex.h"
-#define DB_LNK_MAX          4194304
+#ifdef HAVE_PTHREAD
+#include <pthread.h>
+#endif
+#define DB_LNK_MAX          2097152
 #define DB_LNK_INCREMENT    65536
 #define DB_DBX_MAX          2000000000
-#define DB_DBX_BASE         10000000
-#define DB_BASE_SIZE        64
+#define DB_DBX_BASE         1000000
+#define DB_BASE_SIZE        16
 #define DB_PATH_MAX         1024
-#define DB_DIR_FILES        256
+#define DB_DIR_FILES        64
 #define DB_BUF_SIZE         4096
 #define DB_XBLOCKS_MAX      14
 #define DB_MBLOCKS_MAX      1024
 #define DB_MBLOCK_BASE      4096
 #define DB_MBLOCK_MAX       33554432
+#define DB_MUTEX_MAX        65536
+#define DB_USE_MMAP         0x01
 //#define  DB_MBLOCK_MAX      1048576
 //#define  DB_MBLOCK_MAX      2097152
 //#define  DB_MBLOCK_MAX        4194304
@@ -42,8 +47,10 @@ typedef struct _DBX
 typedef struct _XIO
 {
     int     fd;
-    void    *map;
-    MUTEX   *mutex;
+    int     wfd;
+    char    *map;
+    void    *mutex;
+    off_t   old;
     off_t   end;
     off_t   size;
 }XIO;
@@ -64,7 +71,6 @@ typedef struct _XBLOCK
     int nmblocks;
     int total;
 }XBLOCK;
-#define DB_USE_MMAP 0x01
 typedef struct _XSTATE
 {
     int status;
@@ -94,6 +100,9 @@ typedef struct _DB
     XIO     dbsio[DB_MFILE_MAX];
     XBLOCK  xblocks[DB_XBLOCKS_MAX];
     char    basedir[DB_PATH_MAX];
+#ifdef HAVE_PTHREAD
+    pthread_mutex_t mutexs[DB_MUTEX_MAX];
+#endif
 }DB;
 /* initialize db */
 DB* db_init(char *dir, int is_mmap);
@@ -101,14 +110,16 @@ DB* db_init(char *dir, int is_mmap);
 int db_set_block_incre_mode(DB *db, int mode);
 /* get data id */
 int db_data_id(DB *db, char *key, int nkey);
+/* chunk data */
+int db_chunk_data(DB *db, int id, char *data, int ndata, int length);
 /* set data return blockid */
 int db_set_data(DB *db, int id, char *data, int ndata);
 /* set mod_time */
 int db_update_modtime(DB *db, int id);
 /* get mod_time */
 time_t db_get_modtime(DB *db, int id);
-/* get data block address and len */
-int db_exists_block(DB *db, int id, char **ptr);
+/* xchunk data */
+int db_xchunk_data(DB *db, char *key, int nkey, char *data, int ndata, int length);
 /* set data */
 int db_xset_data(DB *db, char *key, int nkey, char *data, int ndata);
 /* add data */
@@ -125,6 +136,10 @@ int db_xget_data(DB *db, char *key, int nkey, char **data, int *ndata);
 int db_xget_data_len(DB *db, char *key, int nkey);
 /* check key dataid/len */
 int db_xcheck(DB *db, char *key, int nkey, int *len, time_t *mod_time);
+/* truncate block */
+void *db_truncate_block(DB *db, int id, int ndata);
+/* get data block address and len */
+int db_exists_block(DB *db, int id, char **ptr);
 /* read data */
 int db_read_data(DB *db, int id, char *data);
 /* pread data */
@@ -141,7 +156,9 @@ int db_del_data(DB *db, int id);
 int db_xdel_data(DB *db, char *key, int nkey);
 /* destroy */
 void db_destroy(DB *db);
+/* reset */
+void db_reset(DB *db);
 /* clean db */
 void db_clean(DB *db);
-#define PDB(x) ((DB *)x)
+#define PDB(xxx) ((DB *)xxx)
 #endif

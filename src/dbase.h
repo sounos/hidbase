@@ -54,13 +54,6 @@ extern "C" {
 #ifndef LLU
 #define LLU(mmm) ((unsigned long long int)mmm)
 #endif
-    /*    0    Restricted to the same host. Won't be output by any interface.
-          1    Restricted to the same subnet. Won't be forwarded by a router.
-          <32         Restricted to the same site, organization or department.
-          <64 Restricted to the same region.
-          <128 Restricted to the same continent.
-          <255 Unrestricted in scope. Global.
-          */
 /* dbase request */
 typedef struct _DBHEAD
 {
