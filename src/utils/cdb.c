@@ -945,9 +945,9 @@ int cdb__resize(CDB *db, int id, int length)
                 {
                     if((old = cdb_new_data(db, nold)))
                     {
-                        if(cdb_pread(db, index, old, nold, (off_t)(old_lnk.blockid)*(off_t)CDB_BASE_SIZE) <= 0)
+                        if(cdb_pread(db, x, old, nold, (off_t)(old_lnk.blockid)*(off_t)CDB_BASE_SIZE) <= 0)
                         {
-                            FATAL_LOGGER(db->logger, "read index[%d] dbx[%d] nold:%d data failed, %s", index, id, nold, strerror(errno));
+                            FATAL_LOGGER(db->logger, "read index[%d] dbx[%d] nold:%d data failed, %s", x, id, nold, strerror(errno));
                             _exit(-1);
                         }
                         if(cdb_pwrite(db, index, old, nold, (off_t)(lnk.blockid)*(off_t)CDB_BASE_SIZE) <= 0)
