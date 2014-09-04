@@ -276,11 +276,14 @@
                     {
                         //var osel = document.getElementById('disks');
                         var osel = document.forms['dataview']['disks'];
+                        osel.length = 1;
+                        /*
                         var j = 0;
                         for(j = osel.length - 1; j > 0; j--)
                         {
                             osel.remove(j);
                         }
+                        */
                         var html = "<ul class='ultab'>";
                         j = 1;
                         for(k in nodes)
@@ -335,9 +338,9 @@
                                     html += "<select name='masklist' onchange='MaskDrop(this,"+x+")' >";
                                     html += "<option value='-1' selected>数据分组</option>";
                                     html += "<option value='-2' >重置分组</option>";
-                                    for(j in masks)
+                                    for(i in masks)
                                     {
-                                        html += "<option value='"+masks[j]+"'>"+masks[j]+"</option>";
+                                        html += "<option value='"+masks[i]+"'>"+masks[i]+"</option>";
                                     }
                                     html += "</select>";
                                 }
