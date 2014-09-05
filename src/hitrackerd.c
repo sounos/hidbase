@@ -872,9 +872,9 @@ int traced_packet_handler(CONN *conn, CB_DATA *packet)
     if(conn && packet && (xhead = (DBHEAD *)packet->data))
     {
         conn->over_estate(conn);
-        ACCESS_LOGGER(logger, "RESP{key:%llu} on %s:%d via %d", (uint64_t)xhead->id, conn->remote_ip, conn->remote_port, conn->fd);
         if(xhead->cmd == DBASE_RESP_SET && xmap_over_task(xmap, xhead->cid) == 0)
         {
+            ACCESS_LOGGER(logger, "RESP{key:%llu index:%d} on %s:%d via %d", (uint64_t)xhead->id, xhead->index, conn->remote_ip, conn->remote_port, conn->fd);
             httpd_over_handler(xhead->index, xhead->id);
         }
         if(conn->groupid) conn->over_session(conn);

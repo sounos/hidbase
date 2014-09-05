@@ -1050,7 +1050,7 @@ void *cdb_truncate_block(CDB *db, int id, int ndata)
     {
         RWLOCK_WRLOCK(db->mutex_dbx);
         CHECK_CDBXIO(db, id);
-        RWLOCK_WRLOCK(db->mutex_dbx);
+        RWLOCK_UNLOCK(db->mutex_dbx);
         cdb_mutex_rdlock(db, id);
         if(dbx[id].block_size < ndata)
         {
