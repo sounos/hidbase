@@ -23,4 +23,4 @@ hitrackerd_SOURCES = hitrackerd.c iniparser.c iniparser.h base64trackerdhtml.h x
 				utils/mmqueue.h utils/mmqueue.c utils/rwlock.h
 hitrackerd_CPPFLAGS = -I utils/ -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -Wall
 hitrackerd_LDFLAGS = -lz -lsbase
-EXTRA_DIST = wdbase.sh wdbio.sh
+EXTRA_DIST = wdbase.sh wdbio.sh test.php
