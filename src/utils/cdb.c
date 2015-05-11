@@ -432,7 +432,7 @@ int cdb_push_block(CDB *db, int index, int blockid, int block_size)
     XLNK *links = NULL, *link = NULL, lnk = {0};
     int x = 0, ret = -1;
 
-    if(db && blockid >= 0 && (x = (CDB_BLOCKS_COUNT(block_size) - 1)) > 0 
+    if(db && blockid >= 0 && (x = (CDB_BLOCKS_COUNT(block_size) - 1)) >= 0 
             && db->status == 0 && x < CDB_LNK_MAX 
             && index >= 0 && index < CDB_MFILE_MAX)
     {
