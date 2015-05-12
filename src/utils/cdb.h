@@ -10,12 +10,13 @@
 #define CDB_PATH_MAX         1024
 #define CDB_DIR_FILES        64
 #define CDB_BUF_SIZE         4096
-#define CDB_XBLOCKS_MAX      15
+#define CDB_XCBLOCKS_MAX      15
 #define CDB_MBLOCKS_MAX      1024
 #define CDB_MBLOCK_BASE      4096
 #define CDB_MBLOCK_MAX       67108864
 #define CDB_MUTEX_MAX        65536
 #define CDB_USE_MMAP         0x01
+#define CDB_BIGFILE_SIZE     2147483648
 //#define  CDB_MBLOCK_MAX      1048576
 //#define  CDB_MBLOCK_MAX      2097152
 //#define  CDB_MBLOCK_MAX        4194304
@@ -34,15 +35,7 @@
 #define CDB_MFILE_MAX        8192
 #define CDB_BLOCK_INCRE_LEN      0x0
 #define CDB_BLOCK_INCRE_DOUBLE   0x1
-typedef struct _CDBX
-{
-    int block_size;
-    int blockid;
-    int ndata;
-    int index;
-    int mod_time;
-}CDBX;
-typedef struct _XIO
+typedef struct _XCIO
 {
     int     fd;
     int     bits;
@@ -51,34 +44,23 @@ typedef struct _XIO
     off_t   end;
     off_t   size;
     pthread_rwlock_t mutex;
-}XIO;
-typedef struct _XLNK
-{
-    int index;
-    int blockid;
-    int count;
-}XLNK;
-typedef struct _XXMM
-{
-    int block_size;
-    int blocks_max;
-}XXMM;
-typedef struct _XBLOCK
+}XCIO;
+typedef struct _XCBLOCK
 {
     char *mblocks[CDB_MBLOCKS_MAX];
     int nmblocks;
     int total;
-}XBLOCK;
-typedef struct _XSTATE
+}XCBLOCK;
+typedef struct _XCSTATE
 {
     int status;
     int mode;
     int last_id;
-    int last_off;
+    size_t last_off;
     int cdb_id_max;
     int data_len_max;
     int block_incre_mode;
-}XSTATE;
+}XCSTATE;
 typedef struct _CDB
 {
     int     status;
@@ -87,12 +69,12 @@ typedef struct _CDB
     off_t   xx_total;
     void    *kmap;
     void    *logger;
-    XSTATE  *state;
-    XIO     stateio;
-    XIO     lnkio;
-    XIO     dbxio;
-    XIO     dbsio[CDB_MFILE_MAX];
-    XBLOCK  xblocks[CDB_XBLOCKS_MAX];
+    XCSTATE  *state;
+    XCIO     stateio;
+    XCIO     lnkio;
+    XCIO     dbxio;
+    XCIO     dbsio[CDB_MFILE_MAX];
+    XCBLOCK  xblocks[CDB_XCBLOCKS_MAX];
     char    basedir[CDB_PATH_MAX];
     pthread_rwlock_t mutex;
     pthread_rwlock_t mutex_lnk;
@@ -104,6 +86,10 @@ typedef struct _CDB
 CDB* cdb_init(char *dir, int is_mmap);
 /* set block incre mode */
 int cdb_set_block_incre_mode(CDB *db, int mode);
+/* set tag */
+int cdb_set_tag(CDB *db, int id, int tag);
+/* get tag */
+int cdb_get_tag(CDB *db, int id, int *tag);
 /* get data id */
 int cdb_data_id(CDB *db, char *key, int nkey);
 /* chunk data */
